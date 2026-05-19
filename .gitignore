@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.claude/
+.history/
+.workbuddy/
+.vscode/
+.idea/
+package-lock.json
+
+
+# Build output
+dist/
+build/
+
+# Testing
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+logs/
+*.log
+
+# Misc
+.DS_Store
+.env
+.env.*
+!.env.example
