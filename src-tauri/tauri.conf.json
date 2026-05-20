@@ -1,11 +1,11 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "COI Mod Status Report",
+  "productName": "COI Mod Manager",
   "version": "0.1.0",
-  "identifier": "com.drewdon.coi-mod-status-report",
+  "identifier": "com.zuohx.coi-mod-manager",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build:server && pnpm build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
@@ -13,9 +13,10 @@
     "windows": [
       {
         "label": "main",
-        "title": "COI Mod Status Report",
-        "width": 1440,
-        "height": 960,
+        "title": "COI Mod Manager",
+        "center": true,
+        "width": 1750,
+        "height": 1000,
         "minWidth": 1100,
         "minHeight": 760,
         "resizable": true
@@ -27,6 +28,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "nsis"
   }
 }
