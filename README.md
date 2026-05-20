@@ -1,6 +1,19 @@
 # Captain of Industry Mod Manager
 
-[![Build](https://github.com/zuohx/coi-mod-manager/actions/workflows/release.yml/badge.svg)](https://github.com/zuohx/coi-mod-manager/actions/workflows/release.yml)
+<p align="center">
+  <a href="https://github.com/zuohx/coi-mod-manager/actions/workflows/release.yml"><img src="https://github.com/zuohx/coi-mod-manager/actions/workflows/release.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/zuohx/coi-mod-manager/releases"><img src="https://img.shields.io/github/v/release/zuohx/coi-mod-manager?color=blue" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/zuohx/coi-mod-manager?color=blue" alt="License"></a>
+  <a href="https://github.com/zuohx/coi-mod-manager/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D22-339933?logo=node.js" alt="Node.js">
+  <img src="https://img.shields.io/badge/pnpm-latest-F69220?logo=pnpm" alt="pnpm">
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript" alt="TypeScript">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React">
+  <img src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri" alt="Tauri">
+</p>
 
 Captain of Industry (COI) 模组管理器 - 用于管理 COI 游戏模组的桌面应用，支持 Web 和 Tauri 桌面两种运行模式。
 
