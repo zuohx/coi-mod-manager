@@ -1,5 +1,7 @@
 # Captain of Industry Mod Manager
 
+[![Build](https://github.com/zuohx/coi-mod-manager/actions/workflows/release.yml/badge.svg)](https://github.com/zuohx/coi-mod-manager/actions/workflows/release.yml)
+
 Captain of Industry (COI) 模组管理器 - 用于管理 COI 游戏模组的桌面应用，支持 Web 和 Tauri 桌面两种运行模式。
 
 ## 技术栈
