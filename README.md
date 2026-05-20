@@ -13,6 +13,14 @@
   <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React">
   <img src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri" alt="Tauri">
+  <img src="https://img.shields.io/badge/Vite-6.3-646CFF?logo=vite&logoColor=white" alt="Vite">
+  <img src="https://img.shields.io/badge/Rust-2021_ed.-000000?logo=rust&logoColor=white" alt="Rust">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/repo-size/zuohx/coi-mod-manager" alt="Repo size">
+  <img src="https://img.shields.io/github/last-commit/zuohx/coi-mod-manager/main" alt="Last commit">
+  <img src="https://img.shields.io/github/commit-activity/m/zuohx/coi-mod-manager" alt="Commit activity">
 </p>
 
 Captain of Industry (COI) 模组管理器 - 用于管理 COI 游戏模组的桌面应用，支持 Web 和 Tauri 桌面两种运行模式。
@@ -26,7 +34,7 @@ Captain of Industry (COI) 模组管理器 - 用于管理 COI 游戏模组的桌�
 
 ## 环境要求
 
-- **Node.js** >= 18
+- **Node.js** >= 22
 - **Rust** (仅 Tauri 桌面开发需要)
 - **pnpm**
 
