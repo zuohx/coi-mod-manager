@@ -55,7 +55,7 @@
               class="directory-input"
               type="text"
               readonly
-              value="C:\Users\DrewDon\AppData\Roaming\Captain of Industry\Mods"
+              value="%USERPROFILE%\AppData\Roaming\Captain of Industry\Mods"
             />
           </div>
 
@@ -399,7 +399,7 @@ status-outdated
 const pageData = {
   title: "COI Mod Manager",
   subtitle: "Captain of Industry · Mod 版本管理与更新",
-  workingDirectory: "C:\\Users\\DrewDon\\AppData\\Roaming\\Captain of Industry\\Mods",
+  workingDirectory: "%USERPROFILE%\\AppData\\Roaming\\Captain of Industry\\Mods",
   stats: {
     total: 15,
     upToDate: 0,
