@@ -14,7 +14,6 @@ const HUB_MODS_LIST_URL = `${HUB_BASE}/Mods`
 const DOWNLOAD_URL_PREFIX = `${HUB_BASE}/Mod/DownloadMod/`
 const HUB_BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
-const DOWNLOAD_USER_AGENT = HUB_BROWSER_USER_AGENT
 const DOWNLOAD_MAX_PARALLEL = 8
 const DOWNLOAD_MIN_SEGMENT_BYTES = 1024 * 1024
 const DOWNLOAD_WRITE_BUFFER_BYTES = 512 * 1024
@@ -22,7 +21,6 @@ const DOWNLOAD_WRITE_BUFFER_BYTES = 512 * 1024
 const hubSearchCache = new Map<string, HubListing[]>()
 
 const hubCookieJar = new Map<string, string>()
-let hubCookieSource: 'config' | 'hub' = 'hub'
 
 type ModStatus = 'up_to_date' | 'update_available' | 'unknown'
 
@@ -102,6 +100,10 @@ export function createModApiPlugin(): Plugin {
   }
 }
 
+export function getRequestHandler() {
+  return handleRequest
+}
+
 export const __test = {
   collectLocalMods,
   extractDownloadUrlFromDetailHtml,
@@ -129,6 +131,14 @@ async function handleRequest(
   res: ServerResponse,
   next: NextFunction
 ) {
+  applyCorsHeaders(req, res)
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204
+    res.end()
+    return
+  }
+
   if (!req.url) {
     next()
     return
@@ -461,7 +471,6 @@ type DownloadSegment = {
 
 function resetHubCookies() {
   hubCookieJar.clear()
-  hubCookieSource = 'hub'
 }
 
 function parseSetCookieHeaders(response: Response): string[] {
@@ -617,10 +626,8 @@ function buildHubDownloadHeaders(referer: string): Record<string, string> {
   })
 }
 
-function logHubCookies(label: string, cookieSource: 'config' | 'hub' = 'hub') {
-  const cookieHeader = getHubCookieHeader()
-  const cookieNames = Array.from(hubCookieJar.keys())
-  return cookieHeader
+function logHubCookies() {
+  return getHubCookieHeader()
 }
 
 async function hubFetch(
@@ -674,15 +681,12 @@ async function ensureHubCookies(
   modPageUrl?: string
 ): Promise<string | undefined> {
   if (!force && hubCookieJar.size > 0 && !modPageUrl) {
-    return logHubCookies('cached', hubCookieSource)
+    return getHubCookieHeader()
   }
 
   if (force) {
     hubCookieJar.clear()
-  }
-
-  const loadedFromConfig = await loadHubCookiesFromConfig()
-  hubCookieSource = loadedFromConfig ? 'config' : 'hub'
+  }  await loadHubCookiesFromConfig()
 
   await warmHubPage(`${HUB_BASE}/`, `${HUB_BASE}/`, 'none')
   await warmHubPage(HUB_MODS_LIST_URL, `${HUB_BASE}/`, 'same-origin')
@@ -692,9 +696,7 @@ async function ensureHubCookies(
     await warmHubPage(normalizedModPageUrl, HUB_MODS_LIST_URL)
   }
 
-  const label = normalizedModPageUrl ? 'hub+mods+mod-page' : 'hub+mods'
-
-  return logHubCookies(label, hubCookieSource)
+  return logHubCookies()
 }
 
 function resolveHubDownloadReferer(
@@ -1336,16 +1338,13 @@ async function searchHub(query: string): Promise<HubListing[]> {
     `${HUB_BASE}/Mods/Search?query=${encodeURIComponent(query)}`
   ]
 
-  const results = await Promise.any(
-    endpoints.map(async (endpoint) => {
-      const html = await fetchText(endpoint)
-      const listings = extractHubListings(html)
-      if (listings.length === 0) {
-        throw new Error('No results')
-      }
-      return listings
-    })
-  ).catch(() => [] as HubListing[])
+  const results = await (async () => {
+    try {
+      return await fetchText(endpoints[0]).then(extractHubListings)
+    } catch {
+      return [] as HubListing[]
+    }
+  })()
 
   if (results.length > 0) {
     hubSearchCache.set(query, results)
@@ -1786,6 +1785,20 @@ function sendJson(res: ServerResponse, statusCode: number, payload: unknown) {
   res.statusCode = statusCode
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.end(JSON.stringify(payload))
+}
+
+function applyCorsHeaders(req: IncomingMessage, res: ServerResponse) {
+  const origin = req.headers.origin
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
 
 function writeEvent(res: ServerResponse, payload: unknown) {
