@@ -6,10 +6,12 @@ node_modules/
 .vscode/
 .idea/
 package-lock.json
+pnpm-lock.yaml
 
 
 # Build output
 dist/
+dist-server/
 build/
 
 # Testing
@@ -36,3 +38,6 @@ logs/
 .env
 .env.*
 !.env.example
+
+# tauri
+src-tauri/target/
