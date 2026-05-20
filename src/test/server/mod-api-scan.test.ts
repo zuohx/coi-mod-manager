@@ -31,7 +31,7 @@ describe('mod api scan recursion', () => {
     const fs = await import('node:fs/promises')
     const modApi = await import('../../../server/mod-api.ts')
 
-    vi.mocked(fs.default.readdir).mockImplementation(async (dirPath: any, options: any) => {
+    vi.mocked(fs.default.readdir).mockImplementation(async (dirPath: any, _options: any) => {
       const target = String(dirPath)
       if (target.endsWith('Mods')) {
         return [
@@ -89,5 +89,67 @@ describe('mod api scan recursion', () => {
 
     const ids = result.map((item: any) => item.id)
     expect(ids).toEqual(expect.arrayContaining(['mod-a', 'mod-b']))
+  })
+
+  it('should answer CORS preflight for standalone api requests', async () => {
+    const modApi = await import('../../../server/mod-api.ts')
+    const handler = modApi.getRequestHandler()
+    const setHeader = vi.fn()
+    const end = vi.fn()
+    const next = vi.fn()
+
+    await handler(
+      {
+        method: 'OPTIONS',
+        url: '/api/mods/local',
+        headers: {
+          origin: 'tauri://localhost'
+        }
+      } as any,
+      {
+        setHeader,
+        end,
+        statusCode: 0
+      } as any,
+      next
+    )
+
+    expect(setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'tauri://localhost')
+    expect(setHeader).toHaveBeenCalledWith('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    expect(setHeader).toHaveBeenCalledWith('Access-Control-Allow-Headers', 'Content-Type')
+    expect(end).toHaveBeenCalled()
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  it('should include CORS headers on api responses', async () => {
+    const fs = await import('node:fs/promises')
+    const modApi = await import('../../../server/mod-api.ts')
+    const handler = modApi.getRequestHandler()
+    const setHeader = vi.fn()
+    const end = vi.fn()
+
+    vi.mocked(fs.default.readdir).mockResolvedValue([] as any)
+
+    const res = {
+      setHeader,
+      end,
+      statusCode: 0
+    } as any
+
+    await handler(
+      {
+        method: 'GET',
+        url: '/api/mods/local',
+        headers: {
+          origin: 'tauri://localhost'
+        }
+      } as any,
+      res,
+      vi.fn()
+    )
+
+    expect(setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'tauri://localhost')
+    expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/json; charset=utf-8')
+    expect(end).toHaveBeenCalled()
   })
 })

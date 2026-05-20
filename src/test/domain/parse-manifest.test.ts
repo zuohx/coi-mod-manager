@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { parseManifest } from '@/domain/mod/parse-manifest'
-import type { ManifestSummary } from '../domain/mod/types'
 
 describe('parseManifest', () => {
   it('should parse valid manifest.json', () => {

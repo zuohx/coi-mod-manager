@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { readManifestFile } from '@/adapters/file/web-manifest-reader'
-import type { ManifestSummary } from '@/domain/mod/types'
 
 describe('readManifestFile', () => {
   it('should read and parse manifest.json', async () => {

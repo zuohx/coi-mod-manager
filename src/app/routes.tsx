@@ -1,7 +1,6 @@
-import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
-function Routes() {
+export default function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
@@ -11,5 +10,3 @@ function Routes() {
     </BrowserRouter>
   )
 }
-
-export default Routes

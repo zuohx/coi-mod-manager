@@ -44,6 +44,41 @@ type ScanStreamEvent =
   | { type: 'complete'; result: ScanModsResponse }
   | { type: 'error'; message: string }
 
+// In dev mode (Vite dev server), API is proxied via Vite's middleware.
+// In production (Tauri), API is served by the standalone Node.js server.
+const API_BASE = import.meta.env.DEV ? '' : 'http://localhost:5174'
+const FETCH_RETRY_DELAYS_MS = [150, 350, 750, 1200]
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function isRetriableFetchError(error: unknown) {
+  return error instanceof TypeError && /fetch/i.test(error.message)
+}
+
+async function fetchWithStartupRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await fetch(input, init)
+    } catch (error) {
+      lastError = error
+      if (!isRetriableFetchError(error) || attempt === FETCH_RETRY_DELAYS_MS.length) {
+        throw error
+      }
+
+      await sleep(FETCH_RETRY_DELAYS_MS[attempt])
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Request failed: ${response.status}`
@@ -134,7 +169,7 @@ async function parseScanStream(
 }
 
 export async function scanMods(handlers?: ScanModsHandlers): Promise<ScanModsResponse> {
-  const response = await fetch('/api/mods/scan')
+  const response = await fetchWithStartupRetry(`${API_BASE}/api/mods/scan`)
   const contentType = response.headers.get('content-type') ?? ''
 
   if (response.ok && contentType.includes('application/x-ndjson')) {
@@ -145,12 +180,12 @@ export async function scanMods(handlers?: ScanModsHandlers): Promise<ScanModsRes
 }
 
 export async function localScan(): Promise<ScanModsResponse> {
-  const response = await fetch('/api/mods/local')
+  const response = await fetchWithStartupRetry(`${API_BASE}/api/mods/local`)
   return parseJsonResponse<ScanModsResponse>(response)
 }
 
 export async function checkMod(installDir: string): Promise<ModRecord> {
-  const response = await fetch('/api/mods/check', {
+  const response = await fetchWithStartupRetry(`${API_BASE}/api/mods/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ installDir })
@@ -223,7 +258,7 @@ export async function upgradeMod(
   hubPageUrl?: string,
   onProgress?: (progress: UpgradeProgress) => void
 ): Promise<ScanModsResponse> {
-  const response = await fetch('/api/mods/upgrade', {
+  const response = await fetchWithStartupRetry(`${API_BASE}/api/mods/upgrade`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

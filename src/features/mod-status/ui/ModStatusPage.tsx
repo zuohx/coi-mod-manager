@@ -1,11 +1,116 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ModRecord } from "@/features/mod-status/model/mod-api";
 import { useModScan } from "@/features/mod-status/model/use-mod-scan";
+import { openDirectoryPath } from "@/adapters/platform/open-directory";
 import "./ModStatusPage.css";
+
+type StatusFilter = "all" | "outdated" | "updated" | "unknown";
+
+const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "outdated", label: "可更新" },
+  { value: "updated", label: "已最新" },
+  { value: "unknown", label: "未知" },
+];
+
+function FilterSelect({
+  value,
+  onChange,
+}: {
+  value: StatusFilter;
+  onChange: (v: StatusFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selectedLabel = FILTER_OPTIONS.find((o) => o.value === value)?.label ?? "全部";
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    // Delay to avoid immediately closing from the toggle click
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClick);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClick);
+    };
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open]);
+
+  return (
+    <div className="ant-select" ref={containerRef}>
+      <div
+        className={`ant-select-selector${open ? " ant-select-selector-open" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+      >
+        <span className="ant-select-selection-item">{selectedLabel}</span>
+        <span className={`ant-select-arrow${open ? " ant-select-arrow-open" : ""}`}>
+          <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 4.5l4 3 4-3" />
+          </svg>
+        </span>
+      </div>
+      {open && (
+        <div className="ant-select-dropdown">
+          <div className="ant-select-item-option-group" role="listbox">
+            {FILTER_OPTIONS.map((opt) => {
+              const selected = opt.value === value;
+              return (
+                <div
+                  key={opt.value}
+                  className={`ant-select-item-option${selected ? " ant-select-item-option-selected" : ""}`}
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="ant-select-item-option-content">{opt.label}</span>
+                  {selected && (
+                    <span className="ant-select-item-option-state">
+                      <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2.5 6l2.5 2.5 4.5-5" />
+                      </svg>
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const HUB_MODS_URL = "https://hub.coigame.com/Mods";
 
-type StatusFilter = "all" | "outdated" | "updated" | "unknown";
 type Theme = "light" | "dark";
 
 type LogType = "info" | "ok" | "warn" | "err" | "dim";
@@ -30,11 +135,6 @@ function getInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function toFileUrl(dirPath: string): string {
-  const normalized = dirPath.replace(/\\/g, "/");
-  return `file:///${encodeURI(normalized)}`;
-}
-
 function matchesFilter(mod: ModRecord, filter: StatusFilter): boolean {
   if (filter === "all") return true;
   const key = statusConfig[mod.status]?.filterKey ?? "unknown";
@@ -47,6 +147,7 @@ export function ModStatusPage() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [logVisible, setLogVisible] = useState(false);
   const [hoveredLogId, setHoveredLogId] = useState<number | null>(null);
@@ -169,13 +270,21 @@ export function ModStatusPage() {
     };
   }, [scanning, mods.length, error, stats, checkingCount, checkedCount]);
 
-  const handleOpenFolder = () => {
+  const handleOpenFolder = async () => {
     if (!dirPath) {
       appendLog("尚未选择工作目录", "warn");
       return;
     }
-    window.open(toFileUrl(dirPath), "_blank");
-    appendLog(`打开目录: ${dirPath}`, "dim");
+
+    try {
+      await openDirectoryPath(dirPath);
+      appendLog(`打开目录: ${dirPath}`, "dim");
+    } catch (e) {
+      appendLog(
+        e instanceof Error ? `打开目录失败: ${e.message}` : `打开目录失败: ${String(e)}`,
+        "err",
+      );
+    }
   };
 
   const handleScan = () => {
@@ -243,10 +352,6 @@ export function ModStatusPage() {
             <button type="button" className="btn btn-default btn-theme-toggle" onClick={toggleTheme} title={theme === "light" ? "切换到暗色主题" : "切换到浅色主题"}>
               <span className={theme === "light" ? "icon icon-moon" : "icon icon-sun"} aria-hidden />
             </button>
-            <button type="button" className="btn btn-default" onClick={handleOpenFolder} disabled={!dirPath}>
-              <span className="icon icon-folder" aria-hidden />
-              打开目录
-            </button>
             <button type="button" className="btn btn-default" onClick={() => window.open(HUB_MODS_URL, "_blank")}>
               <span className="icon icon-globe" aria-hidden />
               Mod Hub
@@ -270,8 +375,14 @@ export function ModStatusPage() {
                 <span>工作目录</span>
               </div>
               <div className="directory-input-wrap">
-                <input className="directory-input" type="text" readOnly value={dirPath} />
+                <span className="ant-input-affix-wrapper ant-input-affix-wrapper-readonly">
+                  <input className="ant-input ant-input-readonly" type="text" readOnly value={dirPath} />
+                </span>
               </div>
+              <button type="button" className="btn btn-default directory-open-btn" onClick={() => void handleOpenFolder()}>
+                <span className="icon icon-folder" aria-hidden />
+                打开目录
+              </button>
             </div>
           </section>
         )}
@@ -297,16 +408,24 @@ export function ModStatusPage() {
           </section>
         )}
 
+        <section className={`notice-bar card notice-${notice.variant}`} role="status">
+          <span className="notice-dot" aria-hidden />
+          <span className="notice-text">{notice.text}</span>
+        </section>
+
         {(mods.length > 0 || scanning) && (
           <section className="toolbar-row">
             <div className="toolbar-left">
-              <input type="search" className="search-input" placeholder="搜索 Mod…" value={search} onChange={(e) => setSearch(e.target.value)} />
-              <select className="filter-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
-                <option value="all">全部</option>
-                <option value="outdated">可更新</option>
-                <option value="updated">已最新</option>
-                <option value="unknown">未知</option>
-              </select>
+              <span className="ant-input-affix-wrapper">
+                <span className="ant-input-prefix">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <path d="M10.5 10.5L14 14" />
+                  </svg>
+                </span>
+                <input type="search" className="ant-input" placeholder="搜索 Mod…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              </span>
+              <FilterSelect value={statusFilter} onChange={setStatusFilter} />
             </div>
             <div className="toolbar-right">
               <button type="button" className="btn btn-warning" onClick={() => void handleUpdateAll()} disabled={stats.needUpdate === 0 || updatingAll || upgradingIds.size > 0 || scanning}>
@@ -321,36 +440,31 @@ export function ModStatusPage() {
           </section>
         )}
 
-        <section className={`notice-bar card notice-${notice.variant}`} role="status">
-          <span className="notice-dot" aria-hidden />
-          <span className="notice-text">{notice.text}</span>
-        </section>
-
-        {!scanning && mods.length === 0 && !error && (
-          <section className="empty-state card">
-            <p>默认目录中没有发现可识别的 Mod</p>
-          </section>
-        )}
-
         <div className="content-layout">
-          {filteredMods.length > 0 && (
-            <section className="table-panel card">
-              <div className="table-wrap">
-                <table className="mod-table">
-                  <thead>
-                    <tr>
-                      <th className="col-index">#</th>
-                      <th className="col-mod">MOD</th>
-                      <th className="col-size">大小</th>
-                      <th className="col-local-version">本地版本</th>
-                      <th className="col-hub-version">HUB 版本</th>
-                      <th className="col-link">链接</th>
-                      <th className="col-status">状态</th>
-                      <th className="col-actions">操作</th>
+          <section className="table-panel card">
+            <div className="table-wrap">
+              <table className="mod-table">
+                <thead>
+                  <tr>
+                    <th className="col-index">#</th>
+                    <th className="col-mod">MOD</th>
+                    <th className="col-size">大小</th>
+                    <th className="col-local-version">本地版本</th>
+                    <th className="col-hub-version">HUB 版本</th>
+                    <th className="col-link">链接</th>
+                    <th className="col-status">状态</th>
+                    <th className="col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mods.length === 0 ? (
+                    <tr className="row-empty">
+                      <td className="cell-empty-filter" colSpan={8}>
+                        {scanning ? '正在扫描本地 Mod…' : '暂无 Mod，请点击「扫描本地」查找 Mod'}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMods.map((mod, index) => {
+                  ) : filteredMods.length > 0 ? (
+                    filteredMods.map((mod, index) => {
                       const status = statusConfig[mod.status] ?? statusConfig.unknown;
                       const isUpdating = upgradingIds.has(mod.id);
                       const isChecking = mod.checkingStatus === "checking";
@@ -463,18 +577,18 @@ export function ModStatusPage() {
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {filteredMods.length === 0 && mods.length > 0 && (
-            <section className="empty-filter card">
-              <p>没有符合筛选条件的 Mod</p>
-            </section>
-          )}
+                    })
+                  ) : (
+                    <tr className="row-empty">
+                      <td className="cell-empty-filter" colSpan={8}>
+                        没有符合筛选条件的 Mod
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <section className={`log-panel card${logVisible ? " visible" : ""}`}>
             <div className="log-header">

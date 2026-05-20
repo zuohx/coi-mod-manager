@@ -5,8 +5,13 @@ vi.mock('@/features/mod-status/model/use-mod-scan', () => ({
   useModScan: vi.fn(),
 }))
 
+vi.mock('@/adapters/platform/open-directory', () => ({
+  openDirectoryPath: vi.fn(),
+}))
+
 import { ModStatusPage } from '@/features/mod-status/ui/ModStatusPage'
 import { useModScan } from '@/features/mod-status/model/use-mod-scan'
+import { openDirectoryPath } from '@/adapters/platform/open-directory'
 
 describe('ModStatusPage', () => {
   beforeEach(() => {
@@ -81,6 +86,29 @@ describe('ModStatusPage', () => {
     expect(
       screen.getByDisplayValue(/C:\\Games\\Steam\\Captain of Industry\\Mods/i),
     ).toBeInTheDocument()
+  })
+
+  it('should open the working directory when open-folder button is clicked', () => {
+    vi.mocked(useModScan).mockReturnValue({
+      mods: [],
+      scanning: false,
+      checkingCount: 0,
+      upgradingIds: new Set(),
+      upgradeProgressMap: {},
+      error: null,
+      dirPath: 'C:\\Mods',
+      scan: vi.fn(),
+      checkUpdates: vi.fn(),
+      upgrade: vi.fn(),
+      recheck: vi.fn(),
+      forceUpgradeAll: vi.fn(),
+    })
+
+    render(<ModStatusPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: /打开目录/i }))
+
+    expect(openDirectoryPath).toHaveBeenCalledWith('C:\\Mods')
   })
 
   it('should enable scan button when directory is selected', () => {
@@ -268,6 +296,7 @@ describe('ModStatusPage', () => {
       checkUpdates: vi.fn(),
       upgrade: mockUpgrade,
       recheck: vi.fn(),
+      forceUpgradeAll: vi.fn(),
     })
 
     render(<ModStatusPage />)
