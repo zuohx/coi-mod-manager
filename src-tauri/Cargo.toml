@@ -1,12 +1,12 @@
 [package]
-name = "coi_mod_status_report"
+name = "coi-mod-manager"
 version = "0.1.0"
-description = "Desktop shell for COI Mod Status Report"
+description = "Desktop shell for COI Mod Manager"
 authors = ["zuohx"]
 edition = "2021"
 
 [lib]
-name = "coi_mod_status_report_lib"
+name = "coi_mod_manager"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
