@@ -1,0 +1,44 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # ── Node.js + pnpm ──────────────────────────────────
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # ── Install JS dependencies ─────────────────────────
+      - name: Install dependencies
+        run: pnpm install
+
+      # ── TypeScript check ────────────────────────────────
+      - name: TypeScript check
+        run: pnpm tsc --noEmit
+
+      # ── Run tests ───────────────────────────────────────
+      - name: Run tests
+        run: pnpm test
