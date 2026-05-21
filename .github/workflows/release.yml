@@ -18,7 +18,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v6
@@ -79,4 +79,3 @@ jobs:
             自动构建发布 ${{ github.ref_name }}
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
-          generate_release_notes: true
