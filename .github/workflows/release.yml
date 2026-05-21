@@ -54,6 +54,24 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      # ── Sync version from git tag ───────────────────────
+      # When building from a tag (e.g. v0.1.1), patch tauri.conf.json
+      # and Cargo.toml so the installer name uses the tag version.
+      - name: Sync version from git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "Patching version to: $version"
+
+          $cfg = Get-Content 'src-tauri/tauri.conf.json'
+          $cfg = $cfg -replace '"version":\s*".*?"', "`"version`": `"$version`""
+          $cfg | Set-Content 'src-tauri/tauri.conf.json'
+
+          $cargo = Get-Content 'src-tauri/Cargo.toml'
+          $cargo = $cargo -replace '^version = ".*"', "version = `"$version`""
+          $cargo | Set-Content 'src-tauri/Cargo.toml'
+
       # ── Build Tauri app ─────────────────────────────────
       # beforeBuildCommand (pnpm build:server && pnpm build) runs automatically
       - name: Build Tauri app
