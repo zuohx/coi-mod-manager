@@ -31,7 +31,8 @@
     "targets": "nsis",
     "resources": [
       "resources/*",
-      "dist-server/*"
+      "dist-server/*",
+      "NOTICE"
     ]
   }
 }

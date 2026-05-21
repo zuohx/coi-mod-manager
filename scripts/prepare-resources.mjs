@@ -11,6 +11,7 @@ const sources = [
     src: join(projectRoot, 'dist-server', 'server.mjs'),
     dest: join(tauriDir, 'dist-server', 'server.mjs'),
   },
+  { src: join(projectRoot, 'NOTICE'), dest: join(tauriDir, 'NOTICE') },
 ]
 
 let ok = 0

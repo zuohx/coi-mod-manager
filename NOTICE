@@ -43,7 +43,7 @@ Copyright (c) Shopify Inc. 2022-2023
 Homepage: https://tauri.app
 License: Apache-2.0 / MIT
 
-Copyright (c) 2019-2024 Tauri Programme within The Commons Conservancy
+Copyright (c) 2019-2025 Tauri Programme within The Commons Conservancy
 
 
 --- Vite ---
@@ -69,14 +69,14 @@ The following Rust crates are compiled into the desktop application.
 Homepage: https://tauri.app
 License: Apache-2.0 / MIT
 
-Copyright (c) 2019-2024 Tauri Programme within The Commons Conservancy
+Copyright (c) 2019-2025 Tauri Programme within The Commons Conservancy
 
 
 --- Tauri Plugin Opener ---
 Homepage: https://github.com/tauri-apps/plugins-workspace
 License: Apache-2.0 / MIT
 
-Copyright (c) 2023-2024 Tauri Programme within The Commons Conservancy
+Copyright (c) 2023-2025 Tauri Programme within The Commons Conservancy
 
 
 --- Serde ---
