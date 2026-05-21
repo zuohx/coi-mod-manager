@@ -74,6 +74,16 @@ jobs:
           $content = $content -replace '(?<=^version = ").*?(?=")', $version
           Set-Content 'src-tauri/Cargo.toml' -Value $content
 
+      # ── Bundle Node.js runtime ───────────────────────────
+      # Bundle node.exe alongside the app so the API server works
+      # on systems without Node.js installed.
+      - name: Bundle Node.js runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path resources
+          Copy-Item (Get-Command node).Source resources/node.exe
+          Write-Host "Bundled node.exe from: $((Get-Command node).Source)"
+
       # ── Build Tauri app ─────────────────────────────────
       # beforeBuildCommand (pnpm build:server && pnpm build) runs automatically
       - name: Build Tauri app

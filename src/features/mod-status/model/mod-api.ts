@@ -53,14 +53,64 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-function isRetriableFetchError(error: unknown) {
-  return error instanceof TypeError && /fetch/i.test(error.message)
+function getUrlFromInput(input: RequestInfo | URL): string {
+  if (typeof input === 'string') {
+    return input
+  }
+  if (input instanceof URL) {
+    return input.toString()
+  }
+  if (input instanceof Request) {
+    return input.url
+  }
+  return String(input)
+}
+
+function isNetworkError(error: unknown): boolean {
+  return error instanceof TypeError && /fetch|network|net\.err/i.test(error.message)
+}
+
+function isDNSError(error: unknown): boolean {
+  return error instanceof TypeError && /enotfound|econnrefused|econnreset|ehostunreach|dns\s*(resolve|lookup)/i.test(error.message)
+}
+
+function isCORSError(error: unknown): boolean {
+  return error instanceof TypeError && /cors|origin/i.test(error.message)
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function buildDetailedFetchError(error: unknown, url: string, attempt: number): Error {
+  const originalMessage = error instanceof Error ? error.message : String(error)
+
+  // User-friendly hints prepended to the raw error
+  const hints: string[] = []
+
+  if (isAbortError(error)) {
+    hints.push('请求被取消')
+  } else if (isDNSError(error)) {
+    hints.push('无法连接到 API 服务器，请检查服务器是否正在运行（端口 5174）')
+  } else if (isCORSError(error)) {
+    hints.push('跨域请求被拒绝，请检查 CORS 配置')
+  } else if (isNetworkError(error)) {
+    if (attempt === 0) {
+      hints.push('无法连接到 API 服务器，请检查服务器是否正在运行（端口 5174）')
+    } else {
+      hints.push(`已重试 ${attempt} 次后仍然无法连接，请检查服务器状态`)
+    }
+  }
+
+  const hintStr = hints.length > 0 ? `${hints.join('；')}\n` : ''
+  return new Error(`${hintStr}[请求失败] ${url}\n${originalMessage}`)
 }
 
 async function fetchWithStartupRetry(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
+  const url = getUrlFromInput(input)
   let lastError: unknown
 
   for (let attempt = 0; attempt <= FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -68,15 +118,21 @@ async function fetchWithStartupRetry(
       return await fetch(input, init)
     } catch (error) {
       lastError = error
-      if (!isRetriableFetchError(error) || attempt === FETCH_RETRY_DELAYS_MS.length) {
-        throw error
+
+      // Only retry network-level errors (server not ready, connection reset, etc.)
+      // Do NOT retry CORS, abort, or non-network errors.
+      const shouldRetry = isNetworkError(error) && !isCORSError(error) && !isAbortError(error)
+
+      if (!shouldRetry || attempt === FETCH_RETRY_DELAYS_MS.length) {
+        throw buildDetailedFetchError(error, url, attempt)
       }
 
       await sleep(FETCH_RETRY_DELAYS_MS[attempt])
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error(String(lastError))
+  const finalError = lastError instanceof Error ? lastError : new Error(String(lastError))
+  throw buildDetailedFetchError(finalError, url, FETCH_RETRY_DELAYS_MS.length)
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {

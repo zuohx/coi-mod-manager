@@ -46,13 +46,30 @@ fn find_project_root() -> Option<PathBuf> {
   let exe = std::env::current_exe().ok()?;
   log_to_file(&format!("[coi-mod-api] exe path: {:?}", exe));
 
-  let mut dir = exe.parent()?;
+  let exe_dir = exe.parent()?;
+
+  // 1) Check bundled resource locations first (Tauri installer)
+  //    Tauri v2 preserves path structure: "../dist-server/*" becomes "_up_/dist-server/"
+  //    Also check flat placement and "resources/" subdirectory.
+  for &subdir in &["", "resources", "_up_", "_up_\\resources"] {
+    let candidate = exe_dir.join(subdir).join("dist-server").join("server.mjs");
+    log_to_file(&format!("[coi-mod-api] checking bundled: {:?}", candidate));
+    if candidate.exists() {
+      let root = exe_dir.to_path_buf();
+      log_to_file(&format!("[coi-mod-api] found project root (bundled): {:?}", root));
+      let project_log = root.join("coi-mod-api.log");
+      let _ = LOG_PATH.set(project_log);
+      return Some(root);
+    }
+  }
+
+  // 2) Fall back to walking up from exe directory (development mode)
+  let mut dir = exe_dir;
   loop {
     let candidate = dir.join("dist-server").join("server.mjs");
-    log_to_file(&format!("[coi-mod-api] checking: {:?}", candidate));
+    log_to_file(&format!("[coi-mod-api] checking parent: {:?}", candidate));
     if candidate.exists() {
       log_to_file(&format!("[coi-mod-api] found project root: {:?}", dir));
-      // Switch logs to project root once we find it
       let project_log = dir.join("coi-mod-api.log");
       let _ = LOG_PATH.set(project_log);
       return Some(dir.to_path_buf());
@@ -67,7 +84,23 @@ fn find_project_root() -> Option<PathBuf> {
 }
 
 fn find_node_exe() -> Option<PathBuf> {
-  // Check well-known install locations
+  // 1) Check bundled location first (next to exe or in resources/ subdirectory)
+  //    Tauri v2 may place resources with "_up_/" prefix for "../" relative paths
+  if let Ok(exe) = std::env::current_exe() {
+    if let Some(exe_dir) = exe.parent() {
+      for &subdir in &["", "resources", "_up_", "_up_\\resources"] {
+        let bundled_node = exe_dir.join(subdir).join("node.exe");
+        if bundled_node.exists() {
+          log_to_file(&format!("[coi-mod-api] found bundled node.exe at: {:?}", bundled_node));
+          return Some(bundled_node);
+        }
+      }
+    }
+  }
+
+  log_to_file("[coi-mod-api] bundled node.exe not found, searching system...");
+
+  // 2) Check well-known install locations
   let program_files = std::env::var("ProgramFiles").unwrap_or_default();
   let program_files_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
   let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
@@ -155,14 +188,28 @@ fn spawn_api_server() -> Option<Child> {
   log_to_file("[coi-mod-api] spawn_api_server() called ----------");
 
   let project_root = find_project_root()?;
-  let server_path = project_root.join("dist-server").join("server.mjs");
+
+  // Find server.mjs — check various locations that Tauri v2 may use
+  let server_path = if project_root.join("dist-server").join("server.mjs").exists() {
+    project_root.join("dist-server").join("server.mjs")
+  } else if project_root.join("resources").join("dist-server").join("server.mjs").exists() {
+    project_root.join("resources").join("dist-server").join("server.mjs")
+  } else if project_root.join("_up_").join("dist-server").join("server.mjs").exists() {
+    project_root.join("_up_").join("dist-server").join("server.mjs")
+  } else if project_root.join("_up_").join("resources").join("dist-server").join("server.mjs").exists() {
+    project_root.join("_up_").join("resources").join("dist-server").join("server.mjs")
+  } else {
+    // Fallback: use direct path (will fail below with clear log)
+    project_root.join("dist-server").join("server.mjs")
+  };
+
   let server_str = server_path.to_string_lossy().to_string();
 
   log_to_file(&format!("[coi-mod-api] server path: {:?}", server_path));
   log_to_file(&format!("[coi-mod-api] server exists: {}", server_path.exists()));
 
   if !server_path.exists() {
-    log_to_file("[coi-mod-api] ERROR: dist-server/server.mjs not found!");
+    log_to_file("[coi-mod-api] ERROR: dist-server/server.mjs not found in any location!");
     return None;
   }
 
