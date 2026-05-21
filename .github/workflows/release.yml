@@ -64,13 +64,15 @@ jobs:
           $version = "${{ github.ref_name }}" -replace '^v', ''
           Write-Host "Patching version to: $version"
 
-          $cfg = Get-Content 'src-tauri/tauri.conf.json'
-          $cfg = $cfg -replace '"version":\s*".*?"', "`"version`": `"$version`""
-          $cfg | Set-Content 'src-tauri/tauri.conf.json'
+          # Patch version in tauri.conf.json
+          $content = Get-Content 'src-tauri/tauri.conf.json' -Raw
+          $content = $content -replace '(?<="version":\s").*?(?=")', $version
+          Set-Content 'src-tauri/tauri.conf.json' -Value $content
 
-          $cargo = Get-Content 'src-tauri/Cargo.toml'
-          $cargo = $cargo -replace '^version = ".*"', "version = `"$version`""
-          $cargo | Set-Content 'src-tauri/Cargo.toml'
+          # Patch version in Cargo.toml
+          $content = Get-Content 'src-tauri/Cargo.toml'
+          $content = $content -replace '(?<=^version = ").*?(?=")', $version
+          Set-Content 'src-tauri/Cargo.toml' -Value $content
 
       # ── Build Tauri app ─────────────────────────────────
       # beforeBuildCommand (pnpm build:server && pnpm build) runs automatically
