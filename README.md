@@ -124,4 +124,4 @@ pnpm tauri:dev
 
 ## 许可证
 
-[GPL-3.0](LICENSE)
+[Apache-2.0](LICENSE)
