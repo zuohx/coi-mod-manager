@@ -40,6 +40,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # 即使测试/构建失败也保存缓存，避免下次重跑重下所有 crate
+          cache-on-failure: true
 
       # ── Install JS dependencies ─────────────────────────
       - name: Install dependencies
