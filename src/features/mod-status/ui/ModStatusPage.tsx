@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ModRecord } from "@/shared/types/api";
 import { useModScan } from "@/features/mod-status/model/use-mod-scan";
 import { openDirectoryPath } from "@/adapters/platform/open-directory";
+import type { UseAppUpdateReturn } from "@/features/app-update/model/use-app-update";
 import "./ModStatusPage.css";
 
 type StatusFilter = "all" | "outdated" | "updated" | "unknown";
@@ -141,7 +142,7 @@ function matchesFilter(mod: ModRecord, filter: StatusFilter): boolean {
   return key === filter;
 }
 
-export function ModStatusPage() {
+export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn }) {
   const { mods, scanning, checkingCount, upgradingIds, upgradeProgressMap, error, dirPath, scan, checkUpdates, upgrade, recheck, forceUpgradeAll } = useModScan();
 
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
@@ -158,13 +159,21 @@ export function ModStatusPage() {
   const [forceUpdating, setForceUpdating] = useState(false);
 
   const toggleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const next = prev === "light" ? "dark" : "light";
-      try {
-        localStorage.setItem("coi-mod-manager-theme", next);
-      } catch {}
-      return next;
-    });
+    const apply = () => {
+      setTheme((prev) => {
+        const next = prev === "light" ? "dark" : "light";
+        try {
+          localStorage.setItem("coi-mod-manager-theme", next);
+        } catch {}
+        return next;
+      });
+    };
+
+    if ("startViewTransition" in document) {
+      document.startViewTransition(() => apply());
+    } else {
+      apply();
+    }
   }, []);
 
   useEffect(() => {
@@ -356,6 +365,22 @@ export function ModStatusPage() {
               <span className="icon icon-globe" aria-hidden />
               Mod Hub
             </button>
+            {appUpdate && (
+              <button
+                type="button"
+                className="btn btn-default"
+                onClick={() => void appUpdate.check()}
+                disabled={
+                  appUpdate.status === "checking" ||
+                  appUpdate.status === "downloading" ||
+                  appUpdate.status === "installing"
+                }
+                title="检查 COI Mod Manager 软件更新"
+              >
+                <span className="icon icon-update" aria-hidden />
+                {appUpdate.status === "checking" ? "检查中…" : "软件更新"}
+              </button>
+            )}
             <button type="button" className="btn btn-primary" onClick={handleScan} disabled={scanning}>
               {scanning ? <span className="btn-spinner" aria-hidden /> : <span className="icon icon-scan" aria-hidden />}
               {scanning ? "扫描中…" : "扫描本地"}
