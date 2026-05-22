@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { ModRecord, UpgradeProgress, IModApiService } from '@/shared/types/api'
 import { createApiService } from './api-service'
 
@@ -53,7 +53,7 @@ async function mapWithConcurrency<T, R>(
  *                注入主要用于测试场景。
  */
 export function useModScan(service?: IModApiService): UseModScanReturn {
-  const api = service ?? createApiService()
+  const api = useMemo(() => service ?? createApiService(), [service])
 
   const [mods, setMods] = useState<ModRecord[]>([])
   const [scanning, setScanning] = useState(false)
