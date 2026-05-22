@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ModRecord } from "@/features/mod-status/model/mod-api";
+import type { ModRecord } from "@/shared/types/api";
 import { useModScan } from "@/features/mod-status/model/use-mod-scan";
 import { openDirectoryPath } from "@/adapters/platform/open-directory";
 import "./ModStatusPage.css";

@@ -1,17 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import type { IModApiService, ScanModsResponse, ModRecord, UpgradeEvent } from '@/shared/types/api'
 
-vi.mock('@/features/mod-status/model/mod-api', () => ({
-  localScan: vi.fn(),
-  checkMod: vi.fn(),
-  upgradeMod: vi.fn()
+// Mock the entire api-service module
+const mockLocalScan = vi.fn<() => Promise<ScanModsResponse>>()
+const mockCheckMod = vi.fn<(installDir: string) => Promise<ModRecord>>()
+const mockStreamUpgrade = vi.fn<
+  (installDir: string, downloadUrl: string, hubPageUrl: string | undefined, onEvent: (event: UpgradeEvent) => void) => Promise<ScanModsResponse>
+>()
+
+const mockService: IModApiService = {
+  localScan: mockLocalScan,
+  checkMod: mockCheckMod,
+  streamScan: vi.fn(),
+  streamUpgrade: mockStreamUpgrade,
+}
+
+vi.mock('@/features/mod-status/model/api-service', () => ({
+  createApiService: () => mockService,
 }))
 
-let mockLocalScan: any
-let mockCheckMod: any
-let mockUpgradeMod: any
-
-const localModFixture = {
+const localModFixture: ModRecord = {
   id: 'mod-1',
   version: '1.0.0',
   displayName: 'Mod 1',
@@ -25,7 +34,7 @@ const localModFixture = {
   installDir: 'C:\\Mods\\mod-1'
 }
 
-const enrichedModFixture = {
+const enrichedModFixture: ModRecord = {
   ...localModFixture,
   sizeText: '1.2 MB',
   sizeLoading: false,
@@ -39,11 +48,6 @@ describe('useModScan', () => {
   beforeEach(async () => {
     vi.resetAllMocks()
     vi.resetModules()
-
-    const apiModule = await import('@/features/mod-status/model/mod-api')
-    mockLocalScan = apiModule.localScan
-    mockCheckMod = apiModule.checkMod
-    mockUpgradeMod = apiModule.upgradeMod
   })
 
   it('should return initial state', async () => {
@@ -108,17 +112,22 @@ describe('useModScan', () => {
       mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue(enrichedModFixture)
-    mockUpgradeMod.mockImplementation(async (
+    mockStreamUpgrade.mockImplementation(async (
       _installDir: string,
       _downloadUrl: string,
       _hubPageUrl: string | undefined,
-      onProgress?: (progress: any) => void
-    ) => {
-      onProgress?.({
-        phase: 'downloading',
-        message: '正在下载更新包',
-        percent: 48
+      onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      // Emit progress event (new format: { type: 'progress', progress: {...} })
+      onEvent?.({
+        type: 'progress',
+        progress: {
+          phase: 'downloading',
+          message: '正在下载更新包',
+          percent: 48
+        }
       })
+      // Return result via promise
       return {
         dirPath: 'C:\\Mods',
         mods: [
@@ -149,7 +158,7 @@ describe('useModScan', () => {
       await result.current.upgrade(result.current.mods[0])
     })
 
-    expect(mockUpgradeMod).toHaveBeenCalledWith(
+    expect(mockStreamUpgrade).toHaveBeenCalledWith(
       'C:\\Mods\\mod-1',
       'https://hub.coigame.com/Mod/DownloadMod/1',
       'https://hub.coigame.com/Mod/1/Mod-1',
@@ -167,7 +176,7 @@ describe('useModScan', () => {
       ...enrichedModFixture,
       downloadUrl: undefined
     })
-    mockUpgradeMod.mockResolvedValue({
+    mockStreamUpgrade.mockResolvedValue({
       dirPath: 'C:\\Mods',
       mods: []
     })
@@ -188,7 +197,7 @@ describe('useModScan', () => {
       await result.current.upgrade(result.current.mods[0])
     })
 
-    expect(mockUpgradeMod).toHaveBeenCalledWith(
+    expect(mockStreamUpgrade).toHaveBeenCalledWith(
       'C:\\Mods\\mod-1',
       'https://hub.coigame.com/Mod/1/Mod-1',
       'https://hub.coigame.com/Mod/1/Mod-1',
@@ -202,20 +211,23 @@ describe('useModScan', () => {
       mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue(enrichedModFixture)
-    let capturedProgress: any[] = []
-    mockUpgradeMod.mockImplementation(async (
+    let capturedEvent: UpgradeEvent | undefined
+    mockStreamUpgrade.mockImplementation(async (
       _installDir: string,
       _downloadUrl: string,
       _hubPageUrl: string | undefined,
-      onProgress?: (progress: any) => void
-    ) => {
-      const progress = {
-        phase: 'downloading',
-        message: '正在下载更新包',
-        percent: 52
+      onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      const event: UpgradeEvent = {
+        type: 'progress',
+        progress: {
+          phase: 'downloading',
+          message: '正在下载更新包',
+          percent: 52
+        }
       }
-      capturedProgress.push(progress)
-      onProgress?.(progress)
+      capturedEvent = event
+      onEvent?.(event)
       return {
         dirPath: 'C:\\Mods',
         mods: []
@@ -238,7 +250,8 @@ describe('useModScan', () => {
       await result.current.upgrade(result.current.mods[0])
     })
 
-    expect(capturedProgress).toHaveLength(1)
+    expect(capturedEvent).toBeDefined()
+    // Upgrade progress map should be empty after upgrade completes (cleaned up in finally)
     expect(result.current.upgradeProgressMap).toEqual({})
   })
 
@@ -246,14 +259,14 @@ describe('useModScan', () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
       mods: [
-        { ...localModFixture, id: 'mod-a', displayName: 'Mod A' },
-        { ...localModFixture, id: 'mod-b', displayName: 'Mod B' }
+        { ...localModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' },
+        { ...localModFixture, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
       ]
     })
 
-    let checkResolveFns: Array<(v: any) => void> = []
+    let checkResolveFns: Array<(v: ModRecord) => void> = []
     mockCheckMod.mockImplementation(
-      () => new Promise((resolve) => checkResolveFns.push(resolve))
+      () => new Promise<ModRecord>((resolve) => checkResolveFns.push(resolve))
     )
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')

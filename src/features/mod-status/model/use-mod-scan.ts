@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { localScan, checkMod, upgradeMod, type ModRecord, type UpgradeProgress } from './mod-api'
+import type { ModRecord, UpgradeProgress, IModApiService } from '@/shared/types/api'
+import { createApiService } from './api-service'
 
 const CHECK_CONCURRENCY = 10
 const UPGRADE_CONCURRENCY = 10
@@ -45,7 +46,15 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-export function useModScan(): UseModScanReturn {
+/**
+ * Mod 扫描状态管理 Hook。
+ *
+ * @param service 可选的 API 服务实例。不传则通过 createApiService() 自动选择。
+ *                注入主要用于测试场景。
+ */
+export function useModScan(service?: IModApiService): UseModScanReturn {
+  const api = service ?? createApiService()
+
   const [mods, setMods] = useState<ModRecord[]>([])
   const [scanning, setScanning] = useState(false)
   const [checkingCount, setCheckingCount] = useState(0)
@@ -67,7 +76,7 @@ export function useModScan(): UseModScanReturn {
     setCheckingCount(0)
 
     try {
-      const local = await localScan()
+      const local = await api.localScan()
       if (abortRef.current) return
 
       setDirPath(local.dirPath)
@@ -87,7 +96,7 @@ export function useModScan(): UseModScanReturn {
     } finally {
       setScanning(false)
     }
-  }, [])
+  }, [api])
 
   const doCheckUpdates = useCallback(async (initialMods?: ModRecord[]) => {
     abortRef.current = false
@@ -110,7 +119,7 @@ export function useModScan(): UseModScanReturn {
       )
 
       try {
-        const enriched = await checkMod(mod.installDir)
+        const enriched = await api.checkMod(mod.installDir)
         if (abortRef.current) return mod
 
         setMods((prev) =>
@@ -139,7 +148,7 @@ export function useModScan(): UseModScanReturn {
     })
 
     setCheckingCount(0)
-  }, [])
+  }, [api])
 
   const scan = useCallback(async () => {
     await doLocalScan()
@@ -165,9 +174,16 @@ export function useModScan(): UseModScanReturn {
     setError(null)
 
     try {
-      const result = await upgradeMod(mod.installDir, upgradeSource, mod.url, (progress) => {
-        setUpgradeProgressMap((prev) => ({ ...prev, [mod.id]: progress }))
-      })
+      const result = await api.streamUpgrade(
+        mod.installDir,
+        upgradeSource,
+        mod.url,
+        (event) => {
+          if (event.type === 'progress') {
+            setUpgradeProgressMap((prev) => ({ ...prev, [mod.id]: event.progress }))
+          }
+        }
+      )
 
       // Merge: apply server results for this mod, keep others intact
       const upgradedMod = result.mods.find((m) => m.id === mod.id)
@@ -191,7 +207,7 @@ export function useModScan(): UseModScanReturn {
         return next
       })
     }
-  }, [])
+  }, [api])
 
   const recheck = useCallback(async (mod: ModRecord) => {
     setMods((prev) =>
@@ -201,7 +217,7 @@ export function useModScan(): UseModScanReturn {
     )
 
     try {
-      const enriched = await checkMod(mod.installDir)
+      const enriched = await api.checkMod(mod.installDir)
       setMods((prev) =>
         sortMods(
           prev.map((m) =>
@@ -220,7 +236,7 @@ export function useModScan(): UseModScanReturn {
         )
       )
     }
-  }, [])
+  }, [api])
 
   const forceUpgradeAll = useCallback(async (
     targetMods: ModRecord[],
@@ -252,19 +268,19 @@ export function useModScan(): UseModScanReturn {
       setCheckingCount(0)
 
       try {
-        const local = await localScan()
+        const local = await api.localScan()
         if (abortRef.current) return
 
         setDirPath(local.dirPath)
-        const mods = sortMods(
+        const sortedMods = sortMods(
           local.mods.map((m) => ({
             ...m,
             status: 'unknown' as const,
             checkingStatus: 'pending' as const
           }))
         )
-        setMods(mods)
-        await doCheckUpdates(mods)
+        setMods(sortedMods)
+        await doCheckUpdates(sortedMods)
       } catch (e) {
         if (!abortRef.current) {
           setError(e instanceof Error ? e : new Error(String(e)))
@@ -277,7 +293,7 @@ export function useModScan(): UseModScanReturn {
     return () => {
       abortRef.current = true
     }
-  }, [doLocalScan, doCheckUpdates])
+  }, [api, doLocalScan, doCheckUpdates])
 
   return { mods, scanning, checkingCount, upgradingIds, upgradeProgressMap, error, dirPath, scan, checkUpdates, upgrade, recheck, forceUpgradeAll }
 }

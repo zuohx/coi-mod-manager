@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-describe('mod api client', () => {
+describe('HttpApiService', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
@@ -27,8 +27,9 @@ describe('mod api client', () => {
       )
     globalThis.fetch = fetchMock as typeof fetch
 
-    const { localScan } = await import('@/features/mod-status/model/mod-api')
-    const pending = localScan()
+    const { HttpApiService } = await import('@/features/mod-status/model/api-service-http')
+    const service = new HttpApiService()
+    const pending = service.localScan()
 
     await vi.runAllTimersAsync()
 
@@ -47,9 +48,10 @@ describe('mod api client', () => {
     )
     globalThis.fetch = fetchMock as typeof fetch
 
-    const { localScan } = await import('@/features/mod-status/model/mod-api')
+    const { HttpApiService } = await import('@/features/mod-status/model/api-service-http')
+    const service = new HttpApiService()
 
-    await expect(localScan()).rejects.toThrow('Bad request')
+    await expect(service.localScan()).rejects.toThrow('Bad request')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
