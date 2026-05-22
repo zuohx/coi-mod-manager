@@ -404,7 +404,14 @@ pub async fn enrich_mod(
     record: &mut ModRecord,
 ) {
     // If manifest already has hubVersion cached, use it
-    if record.remote_version.is_some() {
+    if let Some(ref hv) = record.remote_version.clone() {
+        // Compute status from cached version
+        record.status = if compare_versions(&record.version, &hv) >= 0 {
+            "up_to_date".to_string()
+        } else {
+            "update_available".to_string()
+        };
+
         // Try to get download URL from cached hub URL
         if let Some(ref url) = record.url {
             if let Ok(detail) = parser::fetch_mod_detail(&hub, url).await {
