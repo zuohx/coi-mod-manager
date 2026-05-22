@@ -5,7 +5,7 @@
   "identifier": "com.zuohx.coi-mod-manager",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build:server && node ./scripts/prepare-resources.mjs && pnpm build",
+    "beforeBuildCommand": "pnpm build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
@@ -28,11 +28,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": "nsis",
-    "resources": [
-      "resources/*",
-      "dist-server/*",
-      "NOTICE"
-    ]
+    "targets": "nsis"
   }
 }

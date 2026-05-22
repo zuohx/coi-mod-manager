@@ -1,0 +1,83 @@
+//! COI Hub integration module.
+//!
+//! Cookie flow (matches Node.js server/mod-api.ts):
+//!   1. Load from COI_HUB_COOKIE env / config/hub.json
+//!   2. Attach Cookie header to each Hub request
+//!   3. Parse Set-Cookie from responses, merge into jar
+//!   4. Save back to config/hub.json for persistence
+
+pub mod cookies;
+pub mod parser;
+
+use cookies::CookieJar;
+use std::sync::Arc;
+
+/// The Hub client — wraps reqwest + cookie jar.
+pub struct HubClient {
+    pub http: reqwest::Client,
+    pub cookies: Arc<CookieJar>,
+}
+
+impl HubClient {
+    /// Create a new Hub client. Loads cookies from env/config on init.
+    pub fn new() -> Self {
+        let cookies = Arc::new(CookieJar::new());
+        cookies.load_from_config();
+
+        let http = reqwest::Client::builder()
+            .user_agent(parser::HUB_USER_AGENT)
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    reqwest::header::ACCEPT,
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                        .parse()
+                        .unwrap(),
+                );
+                headers.insert(
+                    reqwest::header::ACCEPT_LANGUAGE,
+                    "zh-CN,zh;q=0.9,en;q=0.8".parse().unwrap(),
+                );
+                headers
+            })
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .build()
+            .expect("Failed to build Hub HTTP client");
+
+        Self { http, cookies }
+    }
+}
+
+/// Fetch HTML from a Hub URL, managing cookies on the request and response.
+pub async fn fetch_html(
+    client: &HubClient,
+    url: &str,
+    referer: &str,
+) -> Result<String, String> {
+    let mut req = client
+        .http
+        .get(url)
+        .header("Referer", referer);
+
+    // Attach stored cookies
+    if let Some(cookie_str) = client.cookies.get_cookie_header() {
+        req = req.header("Cookie", cookie_str);
+    }
+
+    let response = req
+        .send()
+        .await
+        .map_err(|e| format!("Hub HTTP error: {}", e))?;
+
+    // Extract and store Set-Cookie headers
+    client.cookies.apply_set_cookies(response.headers());
+
+    if !response.status().is_success() {
+        return Err(format!("Hub request failed: {}", response.status()));
+    }
+
+    response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))
+}
