@@ -32,3 +32,4 @@ zip = "2"
 walkdir = "2"
 tokio = { version = "1", features = ["full"] }
 regex-lite = "0.1"
+tauri-plugin-updater = "2"
