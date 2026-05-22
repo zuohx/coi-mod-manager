@@ -11,14 +11,12 @@
     "test": "vitest run --configLoader runner",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "build:release": "tauri build && node ./scripts/copy-resources.mjs"
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.2"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0",

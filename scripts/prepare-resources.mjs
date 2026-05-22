@@ -5,12 +5,9 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = join(__dirname, '..')
 const tauriDir = join(projectRoot, 'src-tauri')
+
+// Only NOTICE is bundled; API logic is now native Rust (no Node.js needed).
 const sources = [
-  { src: join(projectRoot, 'resources', 'node.exe'), dest: join(tauriDir, 'resources', 'node.exe') },
-  {
-    src: join(projectRoot, 'dist-server', 'server.mjs'),
-    dest: join(tauriDir, 'dist-server', 'server.mjs'),
-  },
   { src: join(projectRoot, 'NOTICE'), dest: join(tauriDir, 'NOTICE') },
 ]
 
