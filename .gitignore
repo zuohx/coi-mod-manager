@@ -12,6 +12,7 @@ package-lock.json
 dist/
 dist-server/
 build/
+*.tsbuildinfo
 
 # Testing
 coverage/
@@ -37,6 +38,9 @@ logs/
 .env
 .env.*
 !.env.example
+
+# Sensitive config (contains COI Hub session cookies)
+config/hub.json
 
 # tauri
 src-tauri/target/

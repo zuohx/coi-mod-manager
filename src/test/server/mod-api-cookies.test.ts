@@ -14,7 +14,7 @@ describe('hub cookie session', () => {
         return new Response('', {
           status: 200,
           headers: {
-            'set-cookie': '.AspNetCore.Antiforgery.VyLW6ORzMgk=token; Path=/; HttpOnly'
+            'set-cookie': 'mock-session=fake-session-abc; Path=/; HttpOnly'
           }
         })
       }
@@ -23,7 +23,7 @@ describe('hub cookie session', () => {
         return new Response('<html></html>', {
           status: 200,
           headers: {
-            'set-cookie': '_pk_ses.2.85de=1; Path=/'
+            'set-cookie': 'mock-analytics=fake-analytics-123; Path=/'
           }
         })
       }
@@ -31,8 +31,8 @@ describe('hub cookie session', () => {
       if (url.includes('/Mods/Search')) {
         const headers = init?.headers as Record<string, string> | undefined
         const cookie = headers?.Cookie ?? headers?.cookie
-        expect(cookie).toContain('.AspNetCore.Antiforgery.VyLW6ORzMgk=token')
-        expect(cookie).toContain('_pk_ses.2.85de=1')
+        expect(cookie).toContain('mock-session=fake-session-abc')
+        expect(cookie).toContain('mock-analytics=fake-analytics-123')
         expect(headers?.Referer).toBe('https://hub.coigame.com/Mods')
         return new Response('<html></html>', { status: 200 })
       }
@@ -47,7 +47,7 @@ describe('hub cookie session', () => {
     api.resetHubCookies()
     await api.ensureHubCookies(true)
 
-    expect(api.getHubCookieHeader()).toContain('.AspNetCore.Antiforgery.VyLW6ORzMgk=token')
+    expect(api.getHubCookieHeader()).toContain('mock-session=fake-session-abc')
 
     await api.searchHub('Demo Mod')
 
@@ -68,8 +68,7 @@ describe('hub cookie session', () => {
     await fs.default.writeFile(
       path.join(configDir, 'hub.json'),
       JSON.stringify({
-        cookie:
-          '.AspNetCore.Identity.Application=test-token; .AspNetCore.Antiforgery.VyLW6ORzMgk=csrf'
+        cookie: 'mock-identity=fake-identity-token; mock-csrf=fake-csrf-token'
       }),
       'utf8'
     )
@@ -88,7 +87,7 @@ describe('hub cookie session', () => {
       api.resetHubCookies()
       await api.ensureHubCookies(true)
 
-      expect(api.getHubCookieHeader()).toContain('.AspNetCore.Identity.Application=test-token')
+      expect(api.getHubCookieHeader()).toContain('mock-identity=fake-identity-token')
       expect(fetchMock).toHaveBeenCalled()
     } finally {
       process.chdir(previousCwd)
@@ -114,7 +113,7 @@ describe('hub cookie session', () => {
         return new Response('', {
           status: 200,
           headers: {
-            'set-cookie': `hub_session=token-${warmupCalls}; Path=/`
+            'set-cookie': `mock-session=fake-round-${warmupCalls}; Path=/`
           }
         })
       }
@@ -133,14 +132,14 @@ describe('hub cookie session', () => {
       api.resetHubCookies()
       await api.ensureHubCookies(true)
       expect(warmupCalls).toBe(2)
-      expect(api.getHubCookieHeader()).toBe('hub_session=token-2')
+      expect(api.getHubCookieHeader()).toBe('mock-session=fake-round-2')
 
       await api.ensureHubCookies()
       expect(warmupCalls).toBe(2)
 
       await api.ensureHubCookies(true)
       expect(warmupCalls).toBe(4)
-      expect(api.getHubCookieHeader()).toBe('hub_session=token-4')
+      expect(api.getHubCookieHeader()).toBe('mock-session=fake-round-4')
     } finally {
       process.chdir(previousCwd)
       if (previousCookie) {
