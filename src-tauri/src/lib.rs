@@ -19,6 +19,11 @@ fn open_mod_directory(app: tauri::AppHandle, path: String) -> Result<(), String>
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             open_mod_directory,
             commands::scan::local_scan,
