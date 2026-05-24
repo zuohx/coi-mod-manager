@@ -34,7 +34,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/zuohx/coi-mod-manager/releases/latest/download/latest.json"
+        "http://127.0.0.1:8080/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0MTU4MzIzMkNGOTg1MEMKUldRTWhma3NJNE1WMUdDWmFreE1mbG9jTFNUQXA3d29VVHFLcHFVcFZyYmdwNThaUFdtRzc4NnAK"
     }
