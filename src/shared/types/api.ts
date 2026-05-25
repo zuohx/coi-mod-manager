@@ -16,6 +16,16 @@ export type CheckingStatus = 'pending' | 'checking' | 'done'
 export type UpgradePhase = 'resolving' | 'downloading' | 'extracting' | 'installing' | 'scanning' | 'completed'
 
 // ============================================================
+// Changelog
+// ============================================================
+
+export interface ChangelogEntry {
+  version: string
+  date: string
+  content: string
+}
+
+// ============================================================
 // 数据模型
 // ============================================================
 
@@ -32,6 +42,7 @@ export interface ModRecord {
   manifestPath: string
   installDir: string
   checkingStatus?: CheckingStatus
+  changelogEntries?: ChangelogEntry[]
 }
 
 export interface UpgradeProgress {
@@ -87,4 +98,7 @@ export interface IModApiService {
     hubPageUrl: string | undefined,
     onEvent: (event: UpgradeEvent) => void
   ): Promise<ScanModsResponse>
+
+  /** 获取 Mod 更新日志（从 Hub 详情页 Changelog 标签页解析） */
+  fetchChangelog(hubUrl: string): Promise<ChangelogEntry[]>
 }
