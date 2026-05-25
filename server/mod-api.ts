@@ -498,7 +498,9 @@ async function upgradeMod(
         await fs.cp(savedSettingsBackup, restoredDir, { recursive: true, force: true })
       }
 
-      if (hasZhJson) {
+      const newZhJsonPath = path.join(installDir, 'translations', 'zh.json')
+      const hasNewZhJson = await pathExists(newZhJsonPath)
+      if (hasZhJson && !hasNewZhJson) {
         const restoredZhPath = path.join(installDir, 'translations', 'zh.json')
         await fs.mkdir(path.dirname(restoredZhPath), { recursive: true })
         await fs.cp(zhJsonBackup, restoredZhPath)

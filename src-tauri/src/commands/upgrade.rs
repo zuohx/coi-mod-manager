@@ -189,7 +189,8 @@ fn restore_user_data(install_dir: &Path, backup_dir: &Path, has_settings: bool, 
         )
         .ok();
     }
-    if has_zh {
+    let new_zh_exists = install_dir.join("translations").join("zh.json").exists();
+    if has_zh && !new_zh_exists {
         let src = backup_dir.join("zh.json");
         let dst = install_dir.join("translations").join("zh.json");
         if let Some(parent) = dst.parent() {
