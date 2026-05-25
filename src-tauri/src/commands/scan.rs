@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 
 use super::hub::HubClient;
 use super::hub::parser;
+use super::hub::parser::ChangelogEntry;
 
 // ============================================================
 // 数据模型（J — 与 TypeScript 共享类型保持同步）
@@ -40,6 +41,8 @@ pub struct ModRecord {
     pub install_dir: String,
     #[serde(rename = "checkingStatus", skip_serializing_if = "Option::is_none")]
     pub checking_status: Option<String>,
+    #[serde(rename = "changelogEntries", skip_serializing_if = "Option::is_none")]
+    pub changelog_entries: Option<Vec<ChangelogEntry>>,
 }
 
 /// Mirror of `ScanModsResponse` in `src/shared/types/api.ts`.
@@ -257,6 +260,7 @@ pub fn collect_local_mods(dir_path: &Path) -> Vec<ModRecord> {
             manifest_path: manifest_path.to_string_lossy().to_string(),
             install_dir: dir.to_string_lossy().to_string(),
             checking_status: Some("pending".to_string()),
+            changelog_entries: None,
         });
     }
 
@@ -384,6 +388,7 @@ pub async fn check_mod(install_dir: String) -> Result<ModRecord, String> {
         manifest_path: manifest_path.to_string_lossy().to_string(),
         install_dir,
         checking_status: Some("pending".to_string()),
+        changelog_entries: None,
     };
 
     // Hub enrichment (Phase 3)
@@ -414,12 +419,16 @@ pub async fn enrich_mod(
 
         // Try to get download URL from cached hub URL
         if let Some(ref url) = record.url {
+            super::hub::clear_page_cache(url);
             if let Ok(detail) = parser::fetch_mod_detail(&hub, url).await {
                 if let Some(dl) = detail.download_url {
                     record.download_url = Some(dl);
                 }
                 if let Some(size) = detail.size_text {
                     record.size_text = size;
+                }
+                if !detail.changelog.is_empty() {
+                    record.changelog_entries = Some(detail.changelog);
                 }
             }
         }
@@ -457,12 +466,16 @@ pub async fn enrich_mod(
         record.status = status.to_string();
 
         // Fetch detail page for download URL and file size
+        super::hub::clear_page_cache(&listing.url);
         if let Ok(detail) = parser::fetch_mod_detail(&hub, &listing.url).await {
             if let Some(dl) = detail.download_url {
                 record.download_url = Some(dl);
             }
             if let Some(size) = detail.size_text {
                 record.size_text = size;
+            }
+            if !detail.changelog.is_empty() {
+                record.changelog_entries = Some(detail.changelog);
             }
         }
     }
@@ -527,6 +540,13 @@ pub async fn stream_scan(
         dir_path: dir_path_str,
         mods,
     })
+}
+
+/// Fetch changelog entries from a mod's Hub detail page.
+#[tauri::command]
+pub async fn fetch_changelog(hub_url: String) -> Result<Vec<ChangelogEntry>, String> {
+    let hub = HubClient::new();
+    parser::fetch_changelog(&hub, &hub_url).await
 }
 
 // ============================================================

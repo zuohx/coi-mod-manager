@@ -10,7 +10,17 @@ pub mod cookies;
 pub mod parser;
 
 use cookies::CookieJar;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+const PAGE_CACHE_TTL: Duration = Duration::from_secs(300);
+const PAGE_CACHE_MAX_ENTRIES: usize = 100;
+
+fn page_cache() -> &'static Mutex<HashMap<String, (String, Instant)>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, (String, Instant)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 /// The Hub client — wraps reqwest + cookie jar.
 pub struct HubClient {
@@ -48,15 +58,33 @@ impl HubClient {
     }
 }
 
+/// Remove a URL from the page cache so the next fetch gets fresh HTML.
+pub fn clear_page_cache(url: &str) {
+    let mut cache = page_cache().lock().unwrap();
+    cache.remove(url);
+}
+
 /// Fetch HTML from a Hub URL, managing cookies on the request and response.
 pub async fn fetch_html(
     client: &HubClient,
     url: &str,
     referer: &str,
 ) -> Result<String, String> {
+    let url_owned = url.to_string();
+
+    // Check page cache
+    {
+        let cache = page_cache().lock().unwrap();
+        if let Some((html, timestamp)) = cache.get(&url_owned) {
+            if timestamp.elapsed() < PAGE_CACHE_TTL {
+                return Ok(html.clone());
+            }
+        }
+    }
+
     let mut req = client
         .http
-        .get(url)
+        .get(&url_owned)
         .header("Referer", referer);
 
     // Attach stored cookies
@@ -76,8 +104,22 @@ pub async fn fetch_html(
         return Err(format!("Hub request failed: {}", response.status()));
     }
 
-    response
+    let html = response
         .text()
         .await
-        .map_err(|e| format!("Failed to read response: {}", e))
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    // Store in page cache (with LRU eviction)
+    {
+        let mut cache = page_cache().lock().unwrap();
+        if cache.len() >= PAGE_CACHE_MAX_ENTRIES {
+            let oldest_key = cache.iter().min_by_key(|(_, (_, t))| *t).map(|(k, _)| k.clone());
+            if let Some(key) = oldest_key {
+                cache.remove(&key);
+            }
+        }
+        cache.insert(url_owned, (html.clone(), Instant::now()));
+    }
+
+    Ok(html)
 }

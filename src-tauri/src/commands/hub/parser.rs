@@ -33,6 +33,15 @@ pub struct HubListing {
 pub struct ModDetail {
     pub download_url: Option<String>,
     pub size_text: Option<String>,
+    pub changelog: Vec<ChangelogEntry>,
+}
+
+/// A single changelog entry parsed from the Hub detail page.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChangelogEntry {
+    pub version: String,
+    pub date: String,
+    pub content: String,
 }
 
 // ============================================================
@@ -49,7 +58,7 @@ pub async fn search_hub(
     Ok(extract_hub_listings(&html))
 }
 
-/// Fetch mod detail page and extract download URL + file size.
+/// Fetch mod detail page and extract download URL + file size + changelog.
 pub async fn fetch_mod_detail(
     client: &HubClient,
     mod_url: &str,
@@ -61,6 +70,7 @@ pub async fn fetch_mod_detail(
     Ok(ModDetail {
         download_url: extract_download_url(&html),
         size_text: extract_file_size(&html),
+        changelog: extract_changelog(&html),
     })
 }
 
@@ -211,6 +221,95 @@ fn find_size_in_context(text: &str) -> Option<String> {
     .map(|m| normalize_whitespace(m.as_str()))
 }
 
+/// Fetch changelog entries from a mod's Hub detail page.
+pub async fn fetch_changelog(
+    client: &HubClient,
+    hub_url: &str,
+) -> Result<Vec<ChangelogEntry>, String> {
+    if !hub_url.starts_with(&format!("{}/Mod/", HUB_BASE)) {
+        return Ok(Vec::new());
+    }
+    let html = super::fetch_html(client, hub_url, HUB_MODS_LIST_URL).await?;
+    Ok(extract_changelog(&html))
+}
+
+/// Extract changelog entries from the #tab-changelog section of a Hub detail page.
+pub fn extract_changelog(html: &str) -> Vec<ChangelogEntry> {
+    let document = Html::parse_document(html);
+
+    // Select the #tab-changelog container
+    let tab_selector = match Selector::parse("#tab-changelog") {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    let tab_element = match document.select(&tab_selector).next() {
+        Some(el) => el,
+        None => return Vec::new(),
+    };
+
+    // Select each version card (.darkerGreyBg) within the tab
+    let card_selector = match Selector::parse(".darkerGreyBg") {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let h4_selector = Selector::parse("h4").unwrap();
+    let pre_selector = Selector::parse("pre").unwrap();
+
+    let title_re = regex_lite::Regex::new(r"(?i)^v?([0-9][0-9A-Za-z.\-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})").unwrap();
+    let title_line_re = regex_lite::Regex::new(r"(?i)^v?[0-9][0-9A-Za-z.\-]*\s*\|").unwrap();
+
+    let mut entries = Vec::new();
+
+    for card in tab_element.select(&card_selector) {
+        // Extract version + date from <h4>
+        let h4_text = card
+            .select(&h4_selector)
+            .next()
+            .map(|el| el.text().collect::<String>())
+            .unwrap_or_default();
+        let h4_clean = normalize_whitespace(&h4_text);
+
+        let (version, date) = if let Some(caps) = title_re.captures(&h4_clean) {
+            (
+                caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
+            )
+        } else {
+            (h4_clean.clone(), String::new())
+        };
+
+        if version.is_empty() {
+            continue;
+        }
+
+        // Extract content from <pre>
+        let pre_text = card
+            .select(&pre_selector)
+            .next()
+            .map(|el| el.text().collect::<String>())
+            .unwrap_or_default();
+
+        // Filter out the duplicated title line and empty lines
+        let content: String = pre_text
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !title_line_re.is_match(trimmed)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        entries.push(ChangelogEntry {
+            version,
+            date,
+            content: content.trim().to_string(),
+        });
+    }
+
+    entries
+}
+
 // ============================================================
 // 文本处理
 // ============================================================
@@ -334,5 +433,40 @@ mod tests {
             extract_download_url(html),
             Some("https://hub.coigame.com/Mod/DownloadMod/42".to_string())
         );
+    }
+
+    #[test]
+    fn test_extract_changelog() {
+        let html = r#"
+        <div class="tab-pane" id="tab-changelog" role="tabpanel">
+            <div class="darkerGreyBg p-3 rounded mb-3">
+                <h4 class="mb-2">v0.4.3 | 2026-05-04</h4>
+                <pre style="white-space:pre-wrap;">v0.4.3 | 2026-05-04
+* Fixed a bug with the toolbar.
+* Improved performance.</pre>
+            </div>
+            <div class="darkerGreyBg p-3 rounded mb-3">
+                <h4 class="mb-2">v0.4.2 | 2026-04-20</h4>
+                <pre style="white-space:pre-wrap;">v0.4.2 | 2026-04-20
+* Added new feature X.</pre>
+            </div>
+        </div>
+        "#;
+        let entries = extract_changelog(html);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].version, "0.4.3");
+        assert_eq!(entries[0].date, "2026-05-04");
+        assert!(entries[0].content.contains("Fixed a bug"));
+        assert!(entries[0].content.contains("Improved performance"));
+        assert!(!entries[0].content.contains("0.4.3 |"));
+        assert_eq!(entries[1].version, "0.4.2");
+        assert_eq!(entries[1].date, "2026-04-20");
+    }
+
+    #[test]
+    fn test_extract_changelog_empty() {
+        let html = r#"<div id="tab-info">No changelog here</div>"#;
+        let entries = extract_changelog(html);
+        assert!(entries.is_empty());
     }
 }

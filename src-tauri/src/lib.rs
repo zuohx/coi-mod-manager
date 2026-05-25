@@ -29,6 +29,7 @@ pub fn run() {
             commands::scan::local_scan,
             commands::scan::check_mod,
             commands::scan::stream_scan,
+            commands::scan::fetch_changelog,
             commands::upgrade::stream_upgrade
         ])
         .run(tauri::generate_context!())
