@@ -22,6 +22,9 @@ const hubSearchCache = new Map<string, HubListing[]>()
 
 const hubCookieJar = new Map<string, string>()
 
+const PAGE_CACHE_TTL_MS = 5 * 60 * 1000
+const pageCache = new Map<string, { html: string; timestamp: number }>()
+
 type ModStatus = 'up_to_date' | 'update_available' | 'unknown'
 
 type LocalMod = {
@@ -59,6 +62,7 @@ type ApiModRecord = {
   status: ModStatus
   manifestPath: string
   installDir: string
+  changelogEntries?: ChangelogEntry[]
 }
 
 type UpgradeRequest = {
@@ -108,6 +112,7 @@ export const __test = {
   collectLocalMods,
   extractDownloadUrlFromDetailHtml,
   extractFileSizeFromDetailHtml,
+  extractChangelogFromHtml,
   enrichMod,
   downloadArchive,
   buildDownloadSegments,
@@ -150,7 +155,8 @@ async function handleRequest(
     '/api/mods/scan',
     '/api/mods/upgrade',
     '/api/mods/local',
-    '/api/mods/check'
+    '/api/mods/check',
+    '/api/mods/changelog'
   ]
   if (!knownRoutes.includes(url.pathname)) {
     next()
@@ -177,6 +183,12 @@ async function handleRequest(
     if (req.method === 'POST' && url.pathname === '/api/mods/upgrade') {
       const body = await readJsonBody<UpgradeRequest>(req)
       await streamUpgrade(res, body)
+      return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/mods/changelog') {
+      const hubUrl = url.searchParams.get('url') ?? ''
+      await handleChangelog(res, hubUrl)
       return
     }
 
@@ -207,7 +219,7 @@ async function streamScan(res: ServerResponse) {
 
     const enriched: ApiModRecord[] = []
     await mapWithConcurrency(localMods, 4, async (localMod) => {
-      const mod = await enrichMod(localMod)
+      const mod = await enrichMod(localMod, true)
       enriched.push(mod)
       writeEvent(res, { type: 'mod', mod })
     })
@@ -268,8 +280,71 @@ async function handleCheckMod(res: ServerResponse, body: { installDir: string })
     hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion'])
   }
 
-  const enriched = await enrichMod(localMod)
+  const enriched = await enrichMod(localMod, true)
   sendJson(res, 200, enriched)
+}
+
+type ChangelogEntry = {
+  version: string
+  date: string
+  content: string
+}
+
+async function handleChangelog(res: ServerResponse, hubUrl: string) {
+  if (!hubUrl || !hubUrl.startsWith(`${HUB_BASE}/Mod/`)) {
+    sendJson(res, 400, { message: 'Missing or invalid Hub URL' })
+    return
+  }
+
+  const html = await fetchText(hubUrl)
+  const entries = extractChangelogFromHtml(html)
+  sendJson(res, 200, entries)
+}
+
+function extractChangelogFromHtml(html: string): ChangelogEntry[] {
+  // Locate the #tab-changelog section
+  const tabStart = html.indexOf('id="tab-changelog"')
+  if (tabStart < 0) {
+    return []
+  }
+
+  // Find the enclosing div's content (from tabStart to the next sibling tab-pane or end)
+  const afterTab = html.slice(tabStart)
+  // The tab content ends at the next tab-pane div or end of document
+  const nextTabIndex = afterTab.indexOf('id="tab-', 20)
+  const tabContent = nextTabIndex > 0 ? afterTab.slice(0, nextTabIndex) : afterTab
+
+  const entries: ChangelogEntry[] = []
+
+  // Match each version card: <h4>...</h4> followed by <pre>...</pre>
+  const cardPattern = /<h4[^>]*>([\s\S]*?)<\/h4>\s*<pre[^>]*>([\s\S]*?)<\/pre>/gi
+
+  for (const match of tabContent.matchAll(cardPattern)) {
+    const rawTitle = normalizeWhitespace(stripTags(decodeHtmlEntities(match[1] ?? '')))
+    const rawContent = decodeHtmlEntities(match[2] ?? '')
+
+    // Parse title: "v0.4.3 | 2026-05-04" or "0.4.3 | 2026-05-04"
+    const titleMatch = rawTitle.match(/^v?([0-9][0-9A-Za-z.\-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
+    const version = titleMatch?.[1] ?? rawTitle
+    const date = titleMatch?.[2] ?? ''
+
+    // Clean content: remove the duplicated title line if present
+    const lines = rawContent.split(/\n|&#xA;|&#10;/)
+    const contentLines = lines.filter((line) => {
+      const trimmed = line.trim()
+      // Skip empty lines and lines that duplicate the title
+      if (!trimmed) return false
+      if (/^v?[0-9][0-9A-Za-z.\-]*\s*\|/.test(trimmed)) return false
+      return true
+    })
+
+    const content = contentLines.join('\n').trim()
+    if (version) {
+      entries.push({ version, date, content })
+    }
+  }
+
+  return entries
 }
 
 function toPendingMod(localMod: LocalMod): ApiModRecord {
@@ -457,7 +532,7 @@ async function upgradeMod(
       return { dirPath, mods: [] }
     }
 
-    const enriched = await enrichMod(localMod)
+    const enriched = await enrichMod(localMod, true)
     return { dirPath, mods: [enriched] }
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true })
@@ -669,11 +744,13 @@ async function warmHubPage(url: string, referer: string, fetchSite: 'none' | 'sa
     fetchSite,
     fetchUser: fetchSite === 'none' ? '?1' : undefined
   })
-  await response.arrayBuffer().catch(() => undefined)
 
   if (!response.ok) {
     throw new Error(`Failed to warm hub page cookies: ${url} (${response.status})`)
   }
+
+  const html = await response.text()
+  pageCache.set(url, { html, timestamp: Date.now() })
 }
 
 async function ensureHubCookies(
@@ -1187,7 +1264,7 @@ async function downloadArchiveInSegments(
   }
 }
 
-async function enrichMod(localMod: LocalMod): Promise<ApiModRecord> {
+async function enrichMod(localMod: LocalMod, forceRefresh = false): Promise<ApiModRecord> {
   const base: ApiModRecord = {
     id: localMod.id,
     displayName: localMod.displayName,
@@ -1211,7 +1288,8 @@ async function enrichMod(localMod: LocalMod): Promise<ApiModRecord> {
             url: cachedHubUrl,
             status: computeStatus(localMod.version, cachedHubVersion)
           },
-          cachedHubUrl
+          cachedHubUrl,
+          forceRefresh
         )
       )
     }
@@ -1229,7 +1307,8 @@ async function enrichMod(localMod: LocalMod): Promise<ApiModRecord> {
           url: hubListing.url,
           status: computeStatus(localMod.version, hubListing.version)
         },
-        hubListing.url
+        hubListing.url,
+        forceRefresh
       )
     )
   } catch {
@@ -1237,17 +1316,18 @@ async function enrichMod(localMod: LocalMod): Promise<ApiModRecord> {
   }
 }
 
-async function applyHubDetail(record: ApiModRecord, modUrl?: string): Promise<ApiModRecord> {
+async function applyHubDetail(record: ApiModRecord, modUrl?: string, forceRefresh = false): Promise<ApiModRecord> {
   if (!modUrl?.startsWith(`${HUB_BASE}/Mod/`)) {
     return record
   }
 
   try {
-    const detail = await fetchModDetailInfo(modUrl)
+    const detail = await fetchModDetailInfo(modUrl, forceRefresh)
     return {
       ...record,
       sizeText: detail.sizeText ?? record.sizeText,
-      downloadUrl: detail.downloadUrl ?? record.downloadUrl
+      downloadUrl: detail.downloadUrl ?? record.downloadUrl,
+      changelogEntries: detail.changelog
     }
   } catch {
     return record
@@ -1382,14 +1462,19 @@ function extractHubListings(html: string): HubListing[] {
   return matches
 }
 
-async function fetchModDetailInfo(modUrl: string): Promise<{
+async function fetchModDetailInfo(modUrl: string, forceRefresh = false): Promise<{
   downloadUrl?: string
   sizeText?: string
+  changelog?: ChangelogEntry[]
 }> {
+  if (forceRefresh) {
+    pageCache.delete(modUrl)
+  }
   const html = await fetchText(modUrl, HUB_MODS_LIST_URL)
   return {
     downloadUrl: extractDownloadUrlFromDetailHtml(html),
-    sizeText: extractFileSizeFromDetailHtml(html)
+    sizeText: extractFileSizeFromDetailHtml(html),
+    changelog: extractChangelogFromHtml(html)
   }
 }
 
@@ -1702,6 +1787,11 @@ async function extractArchive(zipPath: string, destinationPath: string) {
 }
 
 async function fetchText(url: string, referer = HUB_MODS_LIST_URL): Promise<string> {
+  const cached = pageCache.get(url)
+  if (cached && Date.now() - cached.timestamp < PAGE_CACHE_TTL_MS) {
+    return cached.html
+  }
+
   const response = await hubFetch(url, undefined, {
     referer,
     fetchDest: 'document',
@@ -1713,7 +1803,9 @@ async function fetchText(url: string, referer = HUB_MODS_LIST_URL): Promise<stri
     throw new Error(`Hub request failed: ${response.status}`)
   }
 
-  return response.text()
+  const html = await response.text()
+  pageCache.set(url, { html, timestamp: Date.now() })
+  return html
 }
 
 function decodeHtmlEntities(value: string): string {
