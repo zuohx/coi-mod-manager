@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ModRecord } from "@/shared/types/api";
+import type { ChangelogEntry, ModRecord } from "@/shared/types/api";
 import { useModScan } from "@/features/mod-status/model/use-mod-scan";
+import { createApiService } from "@/features/mod-status/model/api-service";
 import { openDirectoryPath } from "@/adapters/platform/open-directory";
 import type { UseAppUpdateReturn } from "@/features/app-update/model/use-app-update";
 import "./ModStatusPage.css";
@@ -142,6 +143,87 @@ function matchesFilter(mod: ModRecord, filter: StatusFilter): boolean {
   return key === filter;
 }
 
+const apiService = createApiService();
+
+function ChangelogModal({
+  mod,
+  entries,
+  loading,
+  error,
+  onClose,
+}: {
+  mod: ModRecord | null;
+  entries: ChangelogEntry[];
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!mod) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [mod, onClose]);
+
+  if (!mod) return null;
+
+  return (
+    <div className="ant-modal-wrap" onClick={onClose}>
+      <div
+        className="ant-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${mod.displayName} 更新日志`}
+      >
+        <div className="ant-modal-header">
+          <div className="ant-modal-title">
+            {mod.displayName}
+            <span className="ant-modal-subtitle">更新日志</span>
+          </div>
+          <button type="button" className="ant-modal-close" onClick={onClose} aria-label="关闭">
+            <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 1l10 10M11 1L1 11" />
+            </svg>
+          </button>
+        </div>
+        <div className="ant-modal-body">
+          {loading && (
+            <div className="changelog-loading">
+              <span className="size-spinner" />
+              <span>加载中…</span>
+            </div>
+          )}
+          {error && (
+            <div className="changelog-error">
+              <span className="changelog-error-icon">!</span>
+              <span>{error}</span>
+            </div>
+          )}
+          {!loading && !error && entries.length === 0 && (
+            <div className="changelog-empty">暂无更新日志</div>
+          )}
+          {!loading && !error && entries.length > 0 && (
+            <div className="changelog-list">
+              {entries.map((entry, i) => (
+                <div key={i} className="changelog-entry">
+                  <div className="changelog-entry-header">
+                    <span className="changelog-entry-version">{entry.version}</span>
+                    {entry.date && <span className="changelog-entry-date">{entry.date}</span>}
+                  </div>
+                  <pre className="changelog-entry-content">{entry.content}</pre>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn }) {
   const { mods, scanning, checkingCount, upgradingIds, upgradeProgressMap, error, dirPath, scan, checkUpdates, upgrade, recheck, forceUpgradeAll } = useModScan();
 
@@ -155,6 +237,10 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const tooltipShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tooltipHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [changelogModalMod, setChangelogModalMod] = useState<ModRecord | null>(null);
+  const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
+  const [changelogLoading, setChangelogLoading] = useState(false);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
   const [updatingAll, setUpdatingAll] = useState(false);
   const [forceUpdating, setForceUpdating] = useState(false);
 
@@ -322,6 +408,33 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
     } finally {
       setUpdatingAll(false);
     }
+  };
+
+  const handleHubVersionClick = async (mod: ModRecord) => {
+    if (!mod.url) return;
+    setChangelogModalMod(mod);
+    setChangelogError(null);
+    if (mod.changelogEntries && mod.changelogEntries.length > 0) {
+      setChangelogEntries(mod.changelogEntries);
+      setChangelogLoading(false);
+      return;
+    }
+    setChangelogEntries([]);
+    setChangelogLoading(true);
+    try {
+      const entries = await apiService.fetchChangelog(mod.url);
+      setChangelogEntries(entries);
+    } catch (e) {
+      setChangelogError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setChangelogLoading(false);
+    }
+  };
+
+  const handleCloseChangelog = () => {
+    setChangelogModalMod(null);
+    setChangelogEntries([]);
+    setChangelogError(null);
   };
 
   const handleForceUpdateAll = async () => {
@@ -515,7 +628,15 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
                             )}
                           </td>
                           <td className={`cell-local-version${isOutdated ? " is-accent" : ""}${isUpdating ? " updating-pulse" : ""}`}>{mod.version}</td>
-                          <td className="cell-hub-version">{mod.remoteVersion || "—"}</td>
+                          <td className="cell-hub-version">
+                            {mod.url && mod.remoteVersion ? (
+                              <span className="hub-version-link" onClick={() => void handleHubVersionClick(mod)} title="查看更新日志">
+                                {mod.remoteVersion}
+                              </span>
+                            ) : (
+                              mod.remoteVersion || "—"
+                            )}
+                          </td>
                           <td className="cell-link">
                             {mod.url ? (
                               <a className="hub-link" href={mod.url} target="_blank" rel="noreferrer">
@@ -669,6 +790,13 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
           </section>
         </div>
       </div>
+      <ChangelogModal
+        mod={changelogModalMod}
+        entries={changelogEntries}
+        loading={changelogLoading}
+        error={changelogError}
+        onClose={handleCloseChangelog}
+      />
     </div>
   );
 }
