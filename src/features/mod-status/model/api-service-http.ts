@@ -11,6 +11,7 @@ import type {
   ScanModsResponse,
   ScanEvent,
   UpgradeEvent,
+  ChangelogEntry,
 } from '@/shared/types/api'
 
 // ============================================================
@@ -251,5 +252,12 @@ export class HttpApiService implements IModApiService {
     }
 
     return parseJsonResponse<ScanModsResponse>(response)
+  }
+
+  async fetchChangelog(hubUrl: string): Promise<ChangelogEntry[]> {
+    const response = await fetchWithStartupRetry(
+      `${API_BASE}/api/mods/changelog?url=${encodeURIComponent(hubUrl)}`
+    )
+    return parseJsonResponse<ChangelogEntry[]>(response)
   }
 }

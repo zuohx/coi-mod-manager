@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
+  ChangelogEntry,
   IModApiService,
   ModRecord,
   ScanModsResponse,
@@ -101,5 +102,9 @@ export class TauriApiService implements IModApiService {
         reject(err instanceof Error ? err : new Error(String(err)))
       })
     })
+  }
+
+  async fetchChangelog(hubUrl: string): Promise<ChangelogEntry[]> {
+    return invoke<ChangelogEntry[]>('fetch_changelog', { hubUrl })
   }
 }

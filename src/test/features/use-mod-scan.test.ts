@@ -14,6 +14,7 @@ const mockService: IModApiService = {
   checkMod: mockCheckMod,
   streamScan: vi.fn(),
   streamUpgrade: mockStreamUpgrade,
+  fetchChangelog: vi.fn(),
 }
 
 vi.mock('@/features/mod-status/model/api-service', () => ({
