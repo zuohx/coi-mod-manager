@@ -21,6 +21,12 @@ import type {
 const API_BASE = import.meta.env.DEV ? '' : 'http://localhost:5174'
 const FETCH_RETRY_DELAYS_MS = [150, 350, 750, 1200]
 
+/** Default request timeout in ms (applies to non-streaming requests). */
+const REQUEST_TIMEOUT_MS = 120_000
+
+/** Additional retry delays for 5xx server errors. */
+const SERVER_ERROR_RETRY_DELAYS_MS = [500, 1000, 2000]
+
 // ============================================================
 // 内部工具（与原 mod-api.ts 完全一致）
 // ============================================================
@@ -83,7 +89,21 @@ async function fetchWithStartupRetry(
 
   for (let attempt = 0; attempt <= FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      return await fetch(input, init)
+      const response = await fetchWithTimeout(input, init)
+
+      // Retry on 5xx server errors
+      if (response.status >= 500 && attempt < FETCH_RETRY_DELAYS_MS.length) {
+        const delay = attempt < SERVER_ERROR_RETRY_DELAYS_MS.length
+          ? SERVER_ERROR_RETRY_DELAYS_MS[attempt]
+          : FETCH_RETRY_DELAYS_MS[attempt]
+        console.warn(
+          `[coi-mod-manager] HTTP ${response.status} for ${url}, retry ${attempt + 1}/${FETCH_RETRY_DELAYS_MS.length} after ${delay}ms`
+        )
+        await sleep(delay)
+        continue
+      }
+
+      return response
     } catch (error) {
       lastError = error
       const shouldRetry = isNetworkError(error) && !isCORSError(error) && !isAbortError(error)
@@ -112,6 +132,35 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
     throw new Error(message)
   }
   return response.json() as Promise<T>
+}
+
+/**
+ * Fetch with configurable timeout via AbortController.
+ * Merges the timeout signal with any existing signal in init.
+ */
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  // If the caller already passed a signal, listen to it
+  if (init?.signal) {
+    if (init.signal.aborted) {
+      clearTimeout(timer)
+      controller.abort(init.signal.reason)
+    } else {
+      init.signal.addEventListener('abort', () => controller.abort(init.signal!.reason), { once: true })
+    }
+  }
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 // ============================================================
