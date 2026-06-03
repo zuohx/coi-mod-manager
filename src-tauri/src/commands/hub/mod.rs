@@ -5,6 +5,10 @@
 //!   2. Attach Cookie header to each Hub request
 //!   3. Parse Set-Cookie from responses, merge into jar
 //!   4. Save back to config/hub.json for persistence
+//!
+//! Retry policy:
+//!   - fetch_html retries on 5xx errors and network timeouts
+//!   - Max 2 retries with 500ms / 1s backoff
 
 pub mod cookies;
 pub mod parser;
@@ -16,6 +20,13 @@ use std::time::{Duration, Instant};
 
 const PAGE_CACHE_TTL: Duration = Duration::from_secs(300);
 const PAGE_CACHE_MAX_ENTRIES: usize = 100;
+
+/// Timeout for Hub HTTP requests.
+const HUB_REQUEST_TIMEOUT_SECS: u64 = 30;
+
+/// Retry delays (ms) for fetch_html on 5xx / timeout.
+const HUB_RETRY_DELAYS_MS: &[u64] = &[500, 1000];
+const HUB_MAX_RETRIES: usize = HUB_RETRY_DELAYS_MS.len();
 
 fn page_cache() -> &'static Mutex<HashMap<String, (String, Instant)>> {
     static CACHE: OnceLock<Mutex<HashMap<String, (String, Instant)>>> = OnceLock::new();
@@ -65,6 +76,7 @@ pub fn clear_page_cache(url: &str) {
 }
 
 /// Fetch HTML from a Hub URL, managing cookies on the request and response.
+/// Retries on 5xx errors and network timeouts.
 pub async fn fetch_html(
     client: &HubClient,
     url: &str,
@@ -82,44 +94,75 @@ pub async fn fetch_html(
         }
     }
 
-    let mut req = client
-        .http
-        .get(&url_owned)
-        .header("Referer", referer);
+    let timeout = Duration::from_secs(HUB_REQUEST_TIMEOUT_SECS);
+    let mut last_error = String::new();
 
-    // Attach stored cookies
-    if let Some(cookie_str) = client.cookies.get_cookie_header() {
-        req = req.header("Cookie", cookie_str);
-    }
+    for attempt in 0..=HUB_MAX_RETRIES {
+        if attempt > 0 {
+            let delay_ms = HUB_RETRY_DELAYS_MS[attempt - 1];
+            eprintln!(
+                "[coi-mod-manager] hub fetch retry {}/{} after {}ms: {}",
+                attempt, HUB_MAX_RETRIES, delay_ms, url_owned
+            );
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
 
-    let response = req
-        .send()
-        .await
-        .map_err(|e| format!("Hub HTTP error: {}", e))?;
+        let mut req = client
+            .http
+            .get(&url_owned)
+            .header("Referer", referer)
+            .timeout(timeout);
 
-    // Extract and store Set-Cookie headers
-    client.cookies.apply_set_cookies(response.headers());
+        // Attach stored cookies
+        if let Some(cookie_str) = client.cookies.get_cookie_header() {
+            req = req.header("Cookie", cookie_str);
+        }
 
-    if !response.status().is_success() {
-        return Err(format!("Hub request failed: {}", response.status()));
-    }
+        let result = req.send().await;
 
-    let html = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
+        match result {
+            Ok(response) => {
+                // Extract and store Set-Cookie headers
+                client.cookies.apply_set_cookies(response.headers());
 
-    // Store in page cache (with LRU eviction)
-    {
-        let mut cache = page_cache().lock().unwrap();
-        if cache.len() >= PAGE_CACHE_MAX_ENTRIES {
-            let oldest_key = cache.iter().min_by_key(|(_, (_, t))| *t).map(|(k, _)| k.clone());
-            if let Some(key) = oldest_key {
-                cache.remove(&key);
+                if response.status().is_success() {
+                    let html = response
+                        .text()
+                        .await
+                        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+                    // Store in page cache (with LRU eviction)
+                    {
+                        let mut cache = page_cache().lock().unwrap();
+                        if cache.len() >= PAGE_CACHE_MAX_ENTRIES {
+                            let oldest_key = cache.iter().min_by_key(|(_, (_, t))| *t).map(|(k, _)| k.clone());
+                            if let Some(key) = oldest_key {
+                                cache.remove(&key);
+                            }
+                        }
+                        cache.insert(url_owned, (html.clone(), Instant::now()));
+                    }
+
+                    return Ok(html);
+                }
+
+                let status = response.status();
+                last_error = format!("Hub request failed: {}", status);
+
+                // Only retry on 5xx server errors
+                if !status.is_server_error() {
+                    return Err(last_error);
+                }
+            }
+            Err(e) => {
+                last_error = format!("Hub HTTP error: {}", e);
+                // Retry on network/timeout errors
             }
         }
-        cache.insert(url_owned, (html.clone(), Instant::now()));
     }
 
-    Ok(html)
+    Err(format!(
+        "Hub fetch failed after {} retries: {}",
+        HUB_MAX_RETRIES, last_error
+    ))
 }
