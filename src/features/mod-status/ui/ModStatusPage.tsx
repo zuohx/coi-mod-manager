@@ -287,18 +287,23 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
     }
   }, [checkingCount, appendLog]);
 
-  const lastProgressLogRef = useRef<string | null>(null);
+  const lastProgressLogRef = useRef<Record<string, string>>({});
   useEffect(() => {
-    const firstId = [...upgradingIds][0];
-    const msg = firstId ? upgradeProgressMap[firstId]?.message : undefined;
-    if (msg && msg !== lastProgressLogRef.current) {
-      lastProgressLogRef.current = msg;
-      appendLog(msg, "info");
+    for (const id of upgradingIds) {
+      const msg = upgradeProgressMap[id]?.message;
+      if (msg && msg !== lastProgressLogRef.current[id]) {
+        lastProgressLogRef.current[id] = msg;
+        const modName = mods.find((m) => m.id === id)?.displayName ?? id;
+        appendLog(`[${modName}] ${msg}`, "info");
+      }
     }
-    if (upgradingIds.size === 0) {
-      lastProgressLogRef.current = null;
+    // Clean up entries for mods no longer upgrading
+    for (const id of Object.keys(lastProgressLogRef.current)) {
+      if (!upgradingIds.has(id)) {
+        delete lastProgressLogRef.current[id];
+      }
     }
-  }, [upgradeProgressMap, upgradingIds, appendLog]);
+  }, [upgradeProgressMap, upgradingIds, mods, appendLog]);
 
   useEffect(() => {
     if (error) {
@@ -395,19 +400,20 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
   const handleUpdateAll = async () => {
     if (outdatedMods.length === 0 || updatingAll || upgradingIds.size > 0) return;
     setUpdatingAll(true);
-    appendLog(`开始批量更新 ${outdatedMods.length} 个 Mod…`, "info");
-    try {
-      for (const mod of outdatedMods) {
-        appendLog(`更新 ${mod.displayName}…`, "info");
-        await upgrade(mod);
-        appendLog(`${mod.displayName} 更新完成`, "ok");
-      }
-      appendLog("全部更新完成", "ok");
-    } catch {
-      appendLog("批量更新中断", "err");
-    } finally {
-      setUpdatingAll(false);
-    }
+    appendLog(`开始并发更新 ${outdatedMods.length} 个 Mod…`, "info");
+    await forceUpgradeAll(
+      outdatedMods,
+      (mod) => appendLog(`更新 ${mod.displayName}…`, "info"),
+      (mod, ok) => {
+        if (ok) {
+          appendLog(`${mod.displayName} 更新完成`, "ok");
+        } else {
+          appendLog(`${mod.displayName} 更新失败`, "warn");
+        }
+      },
+    );
+    appendLog("批量更新完成", "ok");
+    setUpdatingAll(false);
   };
 
   const handleHubVersionClick = async (mod: ModRecord) => {
@@ -467,7 +473,7 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
       <div className="page-shell">
         <header className="page-header">
           <div className="brand-block">
-            <h1 className="page-title">COI Mod Manager</h1>
+            <h1 className="page-title">COI Mod Manager <span className="version-tag">v{__APP_VERSION__}</span></h1>
             <p className="page-subtitle">Captain of Industry · Mod 版本管理与更新</p>
           </div>
           <div className="header-actions">
@@ -650,6 +656,8 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
                           <td className="cell-status">
                             {isUpdating ? (
                               <span className="status-pill status-updated updating-pulse">⟳ 更新中</span>
+                            ) : mod.upgradeError ? (
+                              <span className="status-pill status-unknown" title={mod.upgradeError}>更新失败</span>
                             ) : mod.checkingStatus === "checking" ? (
                               <span className="status-pill status-unknown checking-pulse">
                                 <span className="size-spinner" aria-hidden />
@@ -679,6 +687,12 @@ export function ModStatusPage({ appUpdate }: { appUpdate?: UseAppUpdateReturn })
                               </div>
                             ) : (
                               <div className="action-group">
+                                {mod.upgradeError && (
+                                  <div className="upgrade-error-msg" title={mod.upgradeError}>
+                                    <span className="upgrade-error-icon">!</span>
+                                    <span className="upgrade-error-text">{mod.upgradeError.length > 30 ? mod.upgradeError.slice(0, 30) + '…' : mod.upgradeError}</span>
+                                  </div>
+                                )}
                                 {canUpgrade && (
                                   <button
                                     type="button"

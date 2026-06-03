@@ -43,6 +43,8 @@ export interface ModRecord {
   installDir: string
   checkingStatus?: CheckingStatus
   changelogEntries?: ChangelogEntry[]
+  /** Per-mod upgrade error message (set when upgrade fails for this specific mod). */
+  upgradeError?: string
 }
 
 export interface UpgradeProgress {
@@ -54,6 +56,12 @@ export interface UpgradeProgress {
 export interface ScanModsResponse {
   dirPath: string
   mods: ModRecord[]
+}
+
+/** Result of a single mod upgrade attempt (used in batch upgrades). */
+export interface UpgradeResult {
+  ok: boolean
+  error?: string
 }
 
 // ============================================================

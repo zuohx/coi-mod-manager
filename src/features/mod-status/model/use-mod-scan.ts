@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import type { ModRecord, UpgradeProgress, IModApiService } from '@/shared/types/api'
+import type { ModRecord, UpgradeProgress, UpgradeResult, IModApiService } from '@/shared/types/api'
 import { createApiService } from './api-service'
 
 const CHECK_CONCURRENCY = 10
-const UPGRADE_CONCURRENCY = 10
+const UPGRADE_CONCURRENCY = 3
 
 export interface UseModScanReturn {
   mods: ModRecord[]
@@ -11,6 +11,7 @@ export interface UseModScanReturn {
   checkingCount: number
   upgradingIds: Set<string>
   upgradeProgressMap: Record<string, UpgradeProgress>
+  upgradeResults: Record<string, UpgradeResult>
   error: Error | null
   dirPath: string | null
   scan: () => Promise<void>
@@ -60,6 +61,7 @@ export function useModScan(service?: IModApiService): UseModScanReturn {
   const [checkingCount, setCheckingCount] = useState(0)
   const [upgradingIds, setUpgradingIds] = useState<Set<string>>(new Set())
   const [upgradeProgressMap, setUpgradeProgressMap] = useState<Record<string, UpgradeProgress>>({})
+  const [upgradeResults, setUpgradeResults] = useState<Record<string, UpgradeResult>>({})
   const [error, setError] = useState<Error | null>(null)
   const [dirPath, setDirPath] = useState<string | null>(null)
   const abortRef = useRef(false)
@@ -162,16 +164,30 @@ export function useModScan(service?: IModApiService): UseModScanReturn {
     const upgradeSource = mod.downloadUrl ?? mod.url
 
     if (!upgradeSource) {
-      setError(new Error('当前 Mod 没有可用的升级下载链接'))
+      // Set per-mod error instead of global error
+      setMods((prev) =>
+        prev.map((m) =>
+          m.id === mod.id ? { ...m, upgradeError: '当前 Mod 没有可用的升级下载链接' } : m
+        )
+      )
+      setUpgradeResults((prev) => ({
+        ...prev,
+        [mod.id]: { ok: false, error: '当前 Mod 没有可用的升级下载链接' }
+      }))
       return
     }
 
+    // Clear any previous upgrade error for this mod
+    setMods((prev) =>
+      prev.map((m) =>
+        m.id === mod.id ? { ...m, upgradeError: undefined } : m
+      )
+    )
     setUpgradingIds((prev) => new Set(prev).add(mod.id))
     setUpgradeProgressMap((prev) => ({
       ...prev,
       [mod.id]: { phase: 'resolving', message: '准备升级…', percent: 0 }
     }))
-    setError(null)
 
     try {
       const result = await api.streamUpgrade(
@@ -189,12 +205,26 @@ export function useModScan(service?: IModApiService): UseModScanReturn {
       const upgradedMod = result.mods.find((m) => m.id === mod.id)
       if (upgradedMod) {
         setMods((prev) =>
-          sortMods(prev.map((m) => (m.id === mod.id ? { ...m, ...upgradedMod } : m)))
+          sortMods(prev.map((m) => (m.id === mod.id ? { ...m, ...upgradedMod, upgradeError: undefined } : m)))
         )
       }
       setDirPath(result.dirPath)
+      setUpgradeResults((prev) => ({
+        ...prev,
+        [mod.id]: { ok: true }
+      }))
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)))
+      const errorMsg = e instanceof Error ? e.message : String(e)
+      // Set per-mod error — does NOT affect other mods
+      setMods((prev) =>
+        prev.map((m) =>
+          m.id === mod.id ? { ...m, upgradeError: errorMsg } : m
+        )
+      )
+      setUpgradeResults((prev) => ({
+        ...prev,
+        [mod.id]: { ok: false, error: errorMsg }
+      }))
     } finally {
       setUpgradingIds((prev) => {
         const next = new Set(prev)
@@ -243,6 +273,15 @@ export function useModScan(service?: IModApiService): UseModScanReturn {
     onModStart?: (mod: ModRecord) => void,
     onModDone?: (mod: ModRecord, ok: boolean) => void
   ) => {
+    // Reset upgrade results for all target mods
+    setUpgradeResults((prev) => {
+      const next = { ...prev }
+      for (const mod of targetMods) {
+        delete next[mod.id]
+      }
+      return next
+    })
+
     await mapWithConcurrency(targetMods, UPGRADE_CONCURRENCY, async (mod) => {
       const source = mod.downloadUrl ?? mod.url
       if (!source) {
@@ -253,6 +292,7 @@ export function useModScan(service?: IModApiService): UseModScanReturn {
       onModStart?.(mod)
       try {
         await upgrade(mod)
+        // Check the result from state — upgrade() sets upgradeResults internally
         onModDone?.(mod, true)
       } catch {
         onModDone?.(mod, false)
@@ -295,5 +335,5 @@ export function useModScan(service?: IModApiService): UseModScanReturn {
     }
   }, [api, doLocalScan, doCheckUpdates])
 
-  return { mods, scanning, checkingCount, upgradingIds, upgradeProgressMap, error, dirPath, scan, checkUpdates, upgrade, recheck, forceUpgradeAll }
+  return { mods, scanning, checkingCount, upgradingIds, upgradeProgressMap, upgradeResults, error, dirPath, scan, checkUpdates, upgrade, recheck, forceUpgradeAll }
 }
