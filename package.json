@@ -9,8 +9,11 @@
     "build:server": "node ./scripts/build-server.mjs",
     "preview": "vite preview --configLoader runner",
     "test": "vitest run --configLoader runner",
+    "sync:version": "node scripts/sync-version.mjs",
     "tauri": "tauri",
+    "pretauri:dev": "node scripts/sync-version.mjs",
     "tauri:dev": "tauri dev",
+    "pretauri:build": "node scripts/sync-version.mjs",
     "tauri:build": "tauri build"
   },
   "dependencies": {

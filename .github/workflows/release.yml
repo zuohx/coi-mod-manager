@@ -53,25 +53,21 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      # ── Sync version from git tag ───────────────────────
-      # When building from a tag (e.g. v0.1.1), patch tauri.conf.json
-      # and Cargo.toml so the installer name uses the tag version.
-      - name: Sync version from git tag
+      # ── Sync version ─────────────────────────────────────
+      # Tag 构建：先将 tag 版本号写入 package.json，再同步到 tauri.conf.json / Cargo.toml
+      # 非 tag 构建：直接执行 sync:version 确保三处版本号一致
+      - name: Patch package.json version from git tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          Write-Host "Patching version to: $version"
+          Write-Host "Patching package.json version to: $version"
+          $pkg = Get-Content 'package.json' -Raw | ConvertFrom-Json
+          $pkg.version = $version
+          $pkg | ConvertTo-Json -Depth 99 | Set-Content 'package.json' -Encoding UTF8
 
-          # Patch version in tauri.conf.json
-          $content = Get-Content 'src-tauri/tauri.conf.json' -Raw
-          $content = $content -replace '(?<="version":\s").*?(?=")', $version
-          Set-Content 'src-tauri/tauri.conf.json' -Value $content
-
-          # Patch version in Cargo.toml
-          $content = Get-Content 'src-tauri/Cargo.toml'
-          $content = $content -replace '(?<=^version = ").*?(?=")', $version
-          Set-Content 'src-tauri/Cargo.toml' -Value $content
+      - name: Sync version to tauri.conf.json & Cargo.toml
+        run: node scripts/sync-version.mjs
 
       # ── Build Tauri app ─────────────────────────────────
       - name: Build Tauri app

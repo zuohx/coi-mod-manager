@@ -35,6 +35,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # ── Sync version ────────────────────────────────────
+      - name: Sync version across config files
+        run: pnpm sync:version
+
       # ── TypeScript check ────────────────────────────────
       - name: TypeScript check
         run: pnpm tsc --noEmit
