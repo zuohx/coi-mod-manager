@@ -118,9 +118,89 @@ fn find_manifest_path(dir: &Path) -> Option<PathBuf> {
 }
 
 /// Read and parse a manifest.json file.
+/// Tolerates non-UTF-8 encodings (e.g. GBK) by using lossy conversion,
+/// and fixes literal newlines inside JSON string values (common in
+/// hand-authored manifests) before parsing.
 fn read_manifest(path: &Path) -> Option<ManifestJson> {
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str::<ManifestJson>(&text).ok()
+    let bytes = std::fs::read(path).ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+    let fixed = fix_literal_newlines_in_json(&text);
+    match serde_json::from_str::<ManifestJson>(&fixed) {
+        Ok(m) => Some(m),
+        Err(e) => {
+            eprintln!(
+                "[coi-mod-manager] scan: JSON parse error in {}: {}",
+                path.display(),
+                e
+            );
+            None
+        }
+    }
+}
+
+/// Replace literal CR/LF characters inside JSON string values with
+/// proper escape sequences (`\r`, `\n`).  This makes hand-authored
+/// manifests with embedded newlines parseable by strict JSON parsers.
+fn fix_literal_newlines_in_json(input: &str) -> std::borrow::Cow<'_, str> {
+    // Quick check: if there are no bare \r or \n (other than the
+    // structural whitespace between tokens), return as-is.
+    let mut in_string = false;
+    let mut needs_fix = false;
+    let mut prev_backslash = false;
+
+    for ch in input.chars() {
+        if in_string {
+            if prev_backslash {
+                prev_backslash = false;
+            } else if ch == '\\' {
+                prev_backslash = true;
+            } else if ch == '"' {
+                in_string = false;
+            } else if ch == '\n' || ch == '\r' {
+                needs_fix = true;
+                break;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        }
+    }
+
+    if !needs_fix {
+        return std::borrow::Cow::Borrowed(input);
+    }
+
+    // Slow path: rebuild the string with escaped newlines
+    let mut out = String::with_capacity(input.len() + 16);
+    let mut in_str = false;
+    let mut esc = false;
+
+    for ch in input.chars() {
+        if in_str {
+            if esc {
+                out.push(ch);
+                esc = false;
+            } else if ch == '\\' {
+                out.push(ch);
+                esc = true;
+            } else if ch == '"' {
+                out.push(ch);
+                in_str = false;
+            } else if ch == '\r' {
+                out.push_str("\\r");
+            } else if ch == '\n' {
+                out.push_str("\\n");
+            } else {
+                out.push(ch);
+            }
+        } else {
+            out.push(ch);
+            if ch == '"' {
+                in_str = true;
+            }
+        }
+    }
+
+    std::borrow::Cow::Owned(out)
 }
 
 /// Extract display name from manifest (prioritize displayName, then display_name).
@@ -182,18 +262,39 @@ pub fn collect_local_mods(dir_path: &Path) -> Vec<ModRecord> {
     // Use BFS-like approach: collect all directories, then process
     let dirs: Vec<PathBuf> = WalkDir::new(dir_path)
         .max_depth(5)
+        .follow_links(true)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            match e {
+                Ok(entry) => Some(entry),
+                Err(err) => {
+                    eprintln!("[coi-mod-manager] scan: WalkDir error: {}", err);
+                    None
+                }
+            }
+        })
         .filter(|e| e.file_type().is_dir())
         .map(|e| e.path().to_path_buf())
         .collect();
 
     for dir in &dirs {
-        let canonical = match dir.canonicalize() {
+        // Try canonicalize for dedup, but fall back to the raw path
+        // so that dirs with symlinks/junctions are not silently skipped.
+        let dedup_key = match dir.canonicalize() {
             Ok(p) => p,
-            Err(_) => continue,
+            Err(_) => {
+                // Use the absolute path as-is when canonicalize fails
+                let abs = if dir.is_absolute() {
+                    dir.clone()
+                } else {
+                    std::env::current_dir()
+                        .map(|cwd| cwd.join(dir))
+                        .unwrap_or_else(|_| dir.clone())
+                };
+                abs
+            }
         };
-        if !visited.insert(canonical.clone()) {
+        if !visited.insert(dedup_key) {
             continue;
         }
 
@@ -204,17 +305,35 @@ pub fn collect_local_mods(dir_path: &Path) -> Vec<ModRecord> {
 
         let manifest = match read_manifest(&manifest_path) {
             Some(m) => m,
-            None => continue,
+            None => {
+                eprintln!(
+                    "[coi-mod-manager] scan: failed to parse manifest: {}",
+                    manifest_path.display()
+                );
+                continue;
+            }
         };
 
         let id = match &manifest.id {
             Some(id) if !id.is_empty() => id.clone(),
-            _ => continue,
+            _ => {
+                eprintln!(
+                    "[coi-mod-manager] scan: skipping mod with empty/missing id: {}",
+                    manifest_path.display()
+                );
+                continue;
+            }
         };
 
         let version = match &manifest.version {
             Some(v) if !v.is_empty() => v.clone(),
-            _ => continue,
+            _ => {
+                eprintln!(
+                    "[coi-mod-manager] scan: skipping mod '{}' with empty/missing version: {}",
+                    id, manifest_path.display()
+                );
+                continue;
+            }
         };
 
         let display_name = manifest_display_name(&manifest);
@@ -263,6 +382,12 @@ pub fn collect_local_mods(dir_path: &Path) -> Vec<ModRecord> {
             changelog_entries: None,
         });
     }
+
+    eprintln!(
+        "[coi-mod-manager] scan: found {} mods in {}",
+        mods.len(),
+        dir_path.display()
+    );
 
     // Sort by display name (locale-aware, like Node.js)
     mods.sort_by(|a, b| {
@@ -494,12 +619,21 @@ pub async fn stream_scan(
     use tauri::Emitter;
 
     let dir_path = default_mods_dir();
+    eprintln!(
+        "[coi-mod-manager] stream_scan start: {}",
+        dir_path.to_string_lossy()
+    );
 
     // Spawn blocking file scan
     let dir_path_str = dir_path.to_string_lossy().to_string();
     let mut mods = tokio::task::spawn_blocking(move || collect_local_mods(&dir_path))
         .await
         .map_err(|e| format!("Scan task panicked: {}", e))?;
+
+    eprintln!(
+        "[coi-mod-manager] stream_scan: found {} local mods",
+        mods.len()
+    );
 
     // Build Hub client for enrichment
     let hub = HubClient::new();
@@ -535,6 +669,11 @@ pub async fn stream_scan(
         }
     });
     let _ = app.emit("scan-event", &complete_event);
+
+    eprintln!(
+        "[coi-mod-manager] stream_scan done: {} mods enriched",
+        total
+    );
 
     Ok(ScanModsResponse {
         dir_path: dir_path_str,
@@ -583,5 +722,29 @@ mod tests {
         assert_eq!(normalize_remote_version(Some("1.0.0")), Some("1.0.0".to_string()));
         assert_eq!(normalize_remote_version(Some("  ")), None);
         assert_eq!(normalize_remote_version(None), None);
+    }
+
+    #[test]
+    fn test_fix_literal_newlines_in_json() {
+        // No newlines inside strings — returned as-is (borrowed)
+        let clean = r#"{"id": "test", "version": "1.0"}"#;
+        let result = fix_literal_newlines_in_json(clean);
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(result, clean);
+
+        // Literal \n inside a string value
+        let dirty = "{\"desc\": \"line1\nline2\"}";
+        let fixed = fix_literal_newlines_in_json(dirty);
+        assert_eq!(fixed, "{\"desc\": \"line1\\nline2\"}");
+
+        // Literal \r\n inside a string value
+        let dirty_crlf = "{\"desc\": \"line1\r\nline2\"}";
+        let fixed_crlf = fix_literal_newlines_in_json(dirty_crlf);
+        assert_eq!(fixed_crlf, "{\"desc\": \"line1\\r\\nline2\"}");
+
+        // Escaped \n inside string (valid JSON) — should NOT be double-escaped
+        let already_escaped = r#"{"desc": "line1\nline2"}"#;
+        let result2 = fix_literal_newlines_in_json(already_escaped);
+        assert!(matches!(result2, std::borrow::Cow::Borrowed(_)));
     }
 }
