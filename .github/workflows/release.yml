@@ -57,14 +57,9 @@ jobs:
       # Tag 构建：先将 tag 版本号写入 package.json，再同步到 tauri.conf.json / Cargo.toml
       # 非 tag 构建：直接执行 sync:version 确保三处版本号一致
       - name: Patch package.json version from git tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
+        if: startsWith(github.ref, 'refs/tags')
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          Write-Host "Patching package.json version to: $version"
-          $pkg = Get-Content 'package.json' -Raw | ConvertFrom-Json
-          $pkg.version = $version
-          [System.IO.File]::WriteAllText('package.json', ($pkg | ConvertTo-Json -Depth 99))
+          node -e "const fs=require('fs');const v='${{ github.ref_name }}'.replace(/^v/,'');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=v;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('Patched version to '+v)"
 
       - name: Sync version to tauri.conf.json & Cargo.toml
         run: node scripts/sync-version.mjs
