@@ -1,11 +1,81 @@
 //! Mod upgrade commands — download, extract, install, backup/rollback.
 //!
 //! Equivalent to Node.js `upgradeMod` + `downloadArchive` + `extractArchive`.
+//!
+//! Concurrency & reliability features:
+//! - Global semaphore limits concurrent upgrades (MAX_CONCURRENT_UPGRADES)
+//! - Per-mod lock prevents duplicate upgrades on the same install_dir
+//! - Download retry with exponential backoff
+//! - Per-request timeout for HTTP operations
+//! - Per-mod event isolation via installDir tagging
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex as StdMutex;
+use std::time::Duration;
+
+use tokio::sync::Semaphore;
 
 use super::hub::parser;
 use super::scan::{self, ModRecord, ScanModsResponse};
+
+// ============================================================
+// 常量
+// ============================================================
+
+/// Maximum number of concurrent upgrade operations.
+const MAX_CONCURRENT_UPGRADES: usize = 3;
+
+/// Download timeout per HTTP request.
+const DOWNLOAD_TIMEOUT_SECS: u64 = 120;
+
+/// Retry delays (ms) for download_file — exponential backoff.
+const DOWNLOAD_RETRY_DELAYS_MS: &[u64] = &[1000, 2000, 4000];
+
+/// Maximum retries for download_file.
+const DOWNLOAD_MAX_RETRIES: usize = DOWNLOAD_RETRY_DELAYS_MS.len();
+
+// ============================================================
+// 全局并发控制
+// ============================================================
+
+fn upgrade_semaphore() -> &'static Semaphore {
+    use std::sync::OnceLock;
+    static SEM: OnceLock<Semaphore> = OnceLock::new();
+    SEM.get_or_init(|| Semaphore::new(MAX_CONCURRENT_UPGRADES))
+}
+
+fn active_upgrades() -> &'static StdMutex<HashSet<String>> {
+    use std::sync::OnceLock;
+    static SET: OnceLock<StdMutex<HashSet<String>>> = OnceLock::new();
+    SET.get_or_init(|| StdMutex::new(HashSet::new()))
+}
+
+/// Try to acquire the per-mod lock. Returns `Err` if this mod is already upgrading.
+fn try_lock_mod(install_dir: &str) -> Result<ModUpgradeGuard, String> {
+    let mut set = active_upgrades().lock().unwrap();
+    if !set.insert(install_dir.to_string()) {
+        return Err(format!(
+            "Mod at '{}' is already being upgraded",
+            install_dir
+        ));
+    }
+    Ok(ModUpgradeGuard {
+        install_dir: install_dir.to_string(),
+    })
+}
+
+/// RAII guard that removes the install_dir from the active set on drop.
+struct ModUpgradeGuard {
+    install_dir: String,
+}
+
+impl Drop for ModUpgradeGuard {
+    fn drop(&mut self) {
+        let mut set = active_upgrades().lock().unwrap();
+        set.remove(&self.install_dir);
+    }
+}
 
 // ============================================================
 // 类型
@@ -21,36 +91,70 @@ pub struct UpgradeProgress {
 }
 
 // ============================================================
-// 下载
+// 下载（含超时 + 指数退避重试）
 // ============================================================
 
-/// Download a file from the given URL to disk.
+/// Download a file from the given URL to disk, with timeout and retry.
 async fn download_file(
     client: &reqwest::Client,
     url: &str,
     dest: &Path,
     referer: &str,
 ) -> Result<(), String> {
-    let response = client
-        .get(url)
-        .header("Referer", referer)
-        .send()
-        .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+    let timeout = Duration::from_secs(DOWNLOAD_TIMEOUT_SECS);
+    let mut last_error = String::new();
 
-    if !response.status().is_success() {
-        return Err(format!("Download HTTP {}", response.status()));
+    for attempt in 0..=DOWNLOAD_MAX_RETRIES {
+        if attempt > 0 {
+            let delay_ms = DOWNLOAD_RETRY_DELAYS_MS[attempt - 1];
+            eprintln!(
+                "[coi-mod-manager] download retry {}/{} after {}ms: {}",
+                attempt, DOWNLOAD_MAX_RETRIES, delay_ms, url
+            );
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
+
+        let result = async {
+            let response = client
+                .get(url)
+                .header("Referer", referer)
+                .timeout(timeout)
+                .send()
+                .await
+                .map_err(|e| format!("Download failed: {}", e))?;
+
+            if !response.status().is_success() {
+                return Err(format!("Download HTTP {}", response.status()));
+            }
+
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| format!("Download error: {}", e))?;
+
+            std::fs::write(dest, &bytes)
+                .map_err(|e| format!("Cannot write file: {}", e))?;
+
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_error = e;
+                // Only retry on network/timeout errors, not on HTTP 4xx
+                if last_error.starts_with("Download HTTP 4") {
+                    return Err(last_error);
+                }
+            }
+        }
     }
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Download error: {}", e))?;
-
-    std::fs::write(dest, &bytes)
-        .map_err(|e| format!("Cannot write file: {}", e))?;
-
-    Ok(())
+    Err(format!(
+        "Download failed after {} retries: {}",
+        DOWNLOAD_MAX_RETRIES, last_error
+    ))
 }
 
 // ============================================================
@@ -211,6 +315,24 @@ fn timestamp_now() -> String {
 // 升级核心
 // ============================================================
 
+/// Generate a unique temp directory path for an upgrade operation.
+/// Uses a sanitized mod directory name + timestamp to avoid collisions.
+fn unique_temp_dir(install_dir: &str) -> PathBuf {
+    let dir_name = Path::new(install_dir)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let safe_name: String = dir_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    std::env::temp_dir().join(format!("coi-mod-upgrade-{}-{}", safe_name, ts))
+}
+
 /// Full upgrade pipeline.
 /// Returns the enriched mod record after successful install + rescan.
 async fn run_upgrade(
@@ -219,6 +341,11 @@ async fn run_upgrade(
     download_url: &str,
     hub_page_url: Option<&str>,
 ) -> Result<ModRecord, String> {
+    eprintln!(
+        "[coi-mod-manager] upgrade start: {} <- {}",
+        install_dir, download_url
+    );
+
     let resolved_url = if download_url.starts_with(parser::DOWNLOAD_URL_PREFIX) {
         download_url.to_string()
     } else if download_url.starts_with(&format!("{}/Mod/", parser::HUB_BASE)) {
@@ -231,8 +358,7 @@ async fn run_upgrade(
         return Err(format!("Unexpected download URL: {}", download_url));
     };
 
-    let temp_root =
-        std::env::temp_dir().join(format!("coi-mod-upgrade-{}", std::process::id()));
+    let temp_root = unique_temp_dir(install_dir);
     std::fs::create_dir_all(&temp_root)
         .map_err(|e| format!("Cannot create temp dir: {}", e))?;
 
@@ -287,6 +413,10 @@ async fn run_upgrade(
     scan::enrich_mod(&hub, record).await;
 
     remove_dir(&temp_root);
+    eprintln!(
+        "[coi-mod-manager] upgrade success: {} -> v{}",
+        install_dir, record.version
+    );
     Ok(record.clone())
 }
 
@@ -296,6 +426,11 @@ async fn run_upgrade(
 
 /// Stream upgrade command — full upgrade pipeline with event streaming.
 /// Sends `progress` events and `complete` event via `app.emit("upgrade-event")`.
+///
+/// Concurrency features:
+/// - Global semaphore limits to MAX_CONCURRENT_UPGRADES parallel upgrades
+/// - Per-mod lock prevents duplicate upgrades on the same install_dir
+/// - Events include `installDir` for frontend filtering
 #[tauri::command]
 pub async fn stream_upgrade(
     app: tauri::AppHandle,
@@ -305,17 +440,35 @@ pub async fn stream_upgrade(
 ) -> Result<ScanModsResponse, String> {
     use tauri::Emitter;
 
-    let emit = |phase: &str, message: &str, percent: Option<f64>| {
+    // Acquire global concurrency permit
+    let _permit = upgrade_semaphore()
+        .acquire()
+        .await
+        .map_err(|e| format!("Failed to acquire upgrade slot: {}", e))?;
+
+    // Acquire per-mod lock (RAII guard releases on drop)
+    let _mod_guard = try_lock_mod(&install_dir)?;
+
+    let install_dir_tag = install_dir.clone();
+    let app_for_emit = app.clone();
+
+    let emit = move |phase: &str, message: &str, percent: Option<f64>| {
         let event = serde_json::json!({
             "type": "progress",
+            "installDir": install_dir_tag,
             "progress": {
                 "phase": phase,
                 "message": message,
                 "percent": percent
             }
         });
-        let _ = app.emit("upgrade-event", &event);
+        let _ = app_for_emit.emit("upgrade-event", &event);
     };
+
+    eprintln!(
+        "[coi-mod-manager] stream_upgrade begin: {}",
+        install_dir
+    );
 
     emit("resolving", "正在解析下载地址", Some(5.0));
     emit("downloading", "正在连接下载服务器", Some(10.0));
@@ -326,24 +479,47 @@ pub async fn stream_upgrade(
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let record = run_upgrade(
+    let record = match run_upgrade(
         &client,
         &install_dir,
         &download_url,
         hub_page_url.as_deref(),
     )
-    .await?;
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!(
+                "[coi-mod-manager] upgrade failed: {} — {}",
+                install_dir, e
+            );
+            // Emit error event so the frontend can track per-mod failures
+            let error_event = serde_json::json!({
+                "type": "error",
+                "installDir": install_dir,
+                "message": e
+            });
+            let _ = app.emit("upgrade-event", &error_event);
+            return Err(e);
+        }
+    };
 
     emit("completed", "升级完成", Some(100.0));
 
     let complete = serde_json::json!({
         "type": "complete",
+        "installDir": install_dir,
         "result": {
             "dirPath": scan::default_mods_dir().to_string_lossy().to_string(),
             "mods": [&record]
         }
     });
     let _ = app.emit("upgrade-event", &complete);
+
+    eprintln!(
+        "[coi-mod-manager] stream_upgrade done: {}",
+        install_dir
+    );
 
     Ok(ScanModsResponse {
         dir_path: scan::default_mods_dir().to_string_lossy().to_string(),
