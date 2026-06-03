@@ -5,6 +5,9 @@ declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown
   }
+
+  /** Vite define 注入的应用版本号（来自 package.json） */
+  const __APP_VERSION__: string
 }
 
 export {}

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { createModApiPlugin } from './server/mod-api.ts'
+import pkg from './package.json' with { type: 'json' }
 
 const host = process.env.TAURI_DEV_HOST
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
@@ -11,6 +12,9 @@ export default defineConfig({
   root: rootDir,
   clearScreen: false,
   plugins: [react(), createModApiPlugin()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   server: {
     port: 5173,
     strictPort: true,
