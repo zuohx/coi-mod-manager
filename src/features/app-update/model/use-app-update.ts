@@ -1,10 +1,42 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { check } from '@tauri-apps/plugin-updater'
+import { getVersion } from '@tauri-apps/api/app'
 
 /**
  * 更新状态枚举
  */
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'no-update' | 'error'
+
+/**
+ * 解析语义化版本号，返回数字段数组
+ */
+function parseVersion(version: string): number[] {
+  return version
+    .replace(/^v/i, '')
+    .split('.')
+    .map((segment) => Number.parseInt(segment.replace(/[^\d].*$/, ''), 10) || 0)
+}
+
+/**
+ * 语义化版本号比较：
+ *  left > right  →  1
+ *  left < right  → -1
+ *  left == right →  0
+ */
+function compareVersions(left: string, right: string): number {
+  const parsedLeft = parseVersion(left)
+  const parsedRight = parseVersion(right)
+  const maxLength = Math.max(parsedLeft.length, parsedRight.length)
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const currentLeft = parsedLeft[index] ?? 0
+    const currentRight = parsedRight[index] ?? 0
+    if (currentLeft > currentRight) return 1
+    if (currentLeft < currentRight) return -1
+  }
+
+  return 0
+}
 
 /**
  * 应用在线更新 Hook
@@ -42,9 +74,20 @@ export function useAppUpdate(options?: { autoCheck?: boolean; delayMs?: number }
     try {
       const update = await check()
       if (update) {
-        setStatus('available')
-        setLatestVersion(update.version)
-        toastDismissedRef.current = false
+        // 获取本地版本号，严格对比远端版本号
+        const localVersion = await getVersion()
+        const cmp = compareVersions(update.version, localVersion)
+
+        if (cmp > 0) {
+          // 远端版本严格大于本地版本，提示更新
+          setStatus('available')
+          setLatestVersion(update.version)
+          toastDismissedRef.current = false
+        } else {
+          // 远端版本 <= 本地版本，无需更新
+          setStatus('no-update')
+          setLatestVersion(null)
+        }
       } else {
         setStatus('no-update')
         setLatestVersion(null)
