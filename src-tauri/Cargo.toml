@@ -1,6 +1,6 @@
 [package]
 name = "coi-mod-manager"
-version = "0.2.4"
+version = "0.2.5"
 description = "COI Mod Manager — Tauri desktop application with native Rust API"
 authors = ["zuohx"]
 edition = "2021"

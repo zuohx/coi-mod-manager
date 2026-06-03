@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "COI Mod Manager",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "identifier": "com.zuohx.coi-mod-manager",
   "build": {
     "beforeDevCommand": "pnpm dev",
