@@ -469,4 +469,64 @@ mod tests {
         let entries = extract_changelog(html);
         assert!(entries.is_empty());
     }
+
+    // ============================================================
+    // TS/Rust 双实现契约测试
+    //
+    // 与 Node 端 (server/mod-api.ts) 共享 fixtures/hub/ 下的 fixture 与 golden
+    // 文件，断言两端解析结果一致。修改解析行为时必须同步更新两端与 golden。
+    // 对应的 Node 端测试：src/test/contract/hub-parser.contract.test.ts
+    // ============================================================
+
+    fn fixture_path(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join("hub")
+            .join(name)
+    }
+
+    fn read_fixture(name: &str) -> String {
+        std::fs::read_to_string(fixture_path(name))
+            .unwrap_or_else(|e| panic!("failed to read fixture {name}: {e}"))
+    }
+
+    #[derive(serde::Deserialize)]
+    struct DetailGolden {
+        #[serde(rename = "downloadUrl")]
+        download_url: String,
+        #[serde(rename = "sizeText")]
+        size_text: String,
+    }
+
+    #[test]
+    fn contract_download_url_matches_golden() {
+        let html = read_fixture("detail.html");
+        let golden: DetailGolden =
+            serde_json::from_str(&read_fixture("detail.expected.json")).unwrap();
+        assert_eq!(extract_download_url(&html), Some(golden.download_url));
+    }
+
+    #[test]
+    fn contract_file_size_matches_golden() {
+        let html = read_fixture("detail.html");
+        let golden: DetailGolden =
+            serde_json::from_str(&read_fixture("detail.expected.json")).unwrap();
+        assert_eq!(extract_file_size(&html), Some(golden.size_text));
+    }
+
+    #[test]
+    fn contract_changelog_matches_golden() {
+        let html = read_fixture("detail.html");
+        let golden: Vec<ChangelogEntry> =
+            serde_json::from_str(&read_fixture("changelog.expected.json")).unwrap();
+        let entries = extract_changelog(&html);
+
+        assert_eq!(entries.len(), golden.len());
+        for (got, want) in entries.iter().zip(golden.iter()) {
+            assert_eq!(got.version, want.version);
+            assert_eq!(got.date, want.date);
+            assert_eq!(got.content, want.content);
+        }
+    }
 }

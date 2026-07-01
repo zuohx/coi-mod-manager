@@ -1,0 +1,12 @@
+[
+  {
+    "version": "0.4.3",
+    "date": "2026-05-04",
+    "content": "* Fixed a bug with the toolbar.\n* Improved performance."
+  },
+  {
+    "version": "0.4.2",
+    "date": "2026-04-20",
+    "content": "* Added new feature X."
+  }
+]

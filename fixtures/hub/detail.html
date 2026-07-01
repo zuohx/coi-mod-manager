@@ -1,0 +1,36 @@
+<!--
+  Shared contract fixture for the COI Hub mod detail page.
+
+  Both the Node.js parser (server/mod-api.ts) and the Rust parser
+  (src-tauri/src/commands/hub/parser.rs) are asserted against this file via
+  the golden expectations in this directory. Keep the two implementations
+  aligned: if you change parsing behavior, update BOTH parsers and the
+  golden files together.
+-->
+<html>
+  <body>
+    <div class="mod-detail">
+      <h1>Awesome Mod</h1>
+      <div class="version-block">
+        <span class="badge">Latest</span>
+        <div class="meta">File size: 12.5 MB</div>
+        <a class="btn" href="/Mod/DownloadMod/123">Download</a>
+      </div>
+
+      <div class="tab-pane" id="tab-info">Some info</div>
+      <div class="tab-pane" id="tab-changelog" role="tabpanel">
+        <div class="darkerGreyBg p-3 rounded mb-3">
+          <h4 class="mb-2">v0.4.3 | 2026-05-04</h4>
+          <pre style="white-space:pre-wrap;">v0.4.3 | 2026-05-04
+* Fixed a bug with the toolbar.
+* Improved performance.</pre>
+        </div>
+        <div class="darkerGreyBg p-3 rounded mb-3">
+          <h4 class="mb-2">v0.4.2 | 2026-04-20</h4>
+          <pre style="white-space:pre-wrap;">v0.4.2 | 2026-04-20
+* Added new feature X.</pre>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
