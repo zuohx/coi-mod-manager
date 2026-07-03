@@ -1,0 +1,9 @@
+dist/
+dist-server/
+node_modules/
+src-tauri/gen/
+src-tauri/target/
+.husky/_/
+*.tsbuildinfo
+pnpm-lock.yaml
+fixtures/*.html

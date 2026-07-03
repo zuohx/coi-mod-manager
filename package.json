@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build --configLoader runner",
     "build:server": "node ./scripts/build-server.mjs",
+    "format": "prettier --write package.json eslint.config.js .prettierrc.json .github/workflows/test.yml",
+    "format:check": "prettier --check package.json eslint.config.js .prettierrc.json .github/workflows/test.yml",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "prepare": "husky",
     "preview": "vite preview --configLoader runner",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run --configLoader runner",
     "sync:version": "node scripts/sync-version.mjs",
     "tauri": "tauri",
@@ -26,14 +32,32 @@
     "@tauri-apps/cli": "^2.5.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.8.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.5.2",
     "esbuild": "^0.28.0",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.0.8",
+    "prettier": "^3.9.4",
+    "typescript-eslint": "^8.62.1",
     "typescript": "~5.8.3",
     "vite": "^6.3.4",
     "vitest": "^3.2.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
   }
 }

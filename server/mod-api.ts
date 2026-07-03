@@ -100,7 +100,7 @@ export function createModApiPlugin(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use(middleware)
-    }
+    },
   }
 }
 
@@ -128,14 +128,10 @@ export const __test = {
   HUB_MODS_LIST_URL,
   getHubConfigPath,
   loadHubCookiesFromConfig,
-  readHubConfigCookie
+  readHubConfigCookie,
 }
 
-async function handleRequest(
-  req: IncomingMessage,
-  res: ServerResponse,
-  next: NextFunction
-) {
+async function handleRequest(req: IncomingMessage, res: ServerResponse, next: NextFunction) {
   applyCorsHeaders(req, res)
 
   if (req.method === 'OPTIONS') {
@@ -156,7 +152,7 @@ async function handleRequest(
     '/api/mods/upgrade',
     '/api/mods/local',
     '/api/mods/check',
-    '/api/mods/changelog'
+    '/api/mods/changelog',
   ]
   if (!knownRoutes.includes(url.pathname)) {
     next()
@@ -214,7 +210,7 @@ async function streamScan(res: ServerResponse) {
     writeEvent(res, {
       type: 'start',
       dirPath,
-      mods: pending
+      mods: pending,
     })
 
     const enriched: ApiModRecord[] = []
@@ -227,13 +223,13 @@ async function streamScan(res: ServerResponse) {
     const result = sortScanResponse(dirPath, enriched)
     writeEvent(res, {
       type: 'complete',
-      result
+      result,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeEvent(res, {
       type: 'error',
-      message
+      message,
     })
   } finally {
     res.end()
@@ -277,7 +273,7 @@ async function handleCheckMod(res: ServerResponse, body: { installDir: string })
     manifestPath,
     installDir,
     hubUrl: getManifestUrl(parsed, ['hubUrl', '_hubUrl']),
-    hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion'])
+    hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion']),
   }
 
   const enriched = await enrichMod(localMod, true)
@@ -324,7 +320,7 @@ function extractChangelogFromHtml(html: string): ChangelogEntry[] {
     const rawContent = decodeHtmlEntities(match[2] ?? '')
 
     // Parse title: "v0.4.3 | 2026-05-04" or "0.4.3 | 2026-05-04"
-    const titleMatch = rawTitle.match(/^v?([0-9][0-9A-Za-z.\-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
+    const titleMatch = rawTitle.match(/^v?([0-9][0-9A-Za-z.-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
     const version = titleMatch?.[1] ?? rawTitle
     const date = titleMatch?.[2] ?? ''
 
@@ -334,7 +330,7 @@ function extractChangelogFromHtml(html: string): ChangelogEntry[] {
       const trimmed = line.trim()
       // Skip empty lines and lines that duplicate the title
       if (!trimmed) return false
-      if (/^v?[0-9][0-9A-Za-z.\-]*\s*\|/.test(trimmed)) return false
+      if (/^v?[0-9][0-9A-Za-z.-]*\s*\|/.test(trimmed)) return false
       return true
     })
 
@@ -359,31 +355,29 @@ function toPendingMod(localMod: LocalMod): ApiModRecord {
     sizeLoading: true,
     remoteVersion: cachedHubVersion,
     url: cachedHubUrl,
-    status: cachedHubVersion
-      ? computeStatus(localMod.version, cachedHubVersion)
-      : 'unknown',
+    status: cachedHubVersion ? computeStatus(localMod.version, cachedHubVersion) : 'unknown',
     manifestPath: localMod.manifestPath,
-    installDir: localMod.installDir
+    installDir: localMod.installDir,
   }
 }
 
 function finalizeModRecord(record: ApiModRecord): ApiModRecord {
   return {
     ...record,
-    sizeLoading: false
+    sizeLoading: false,
   }
 }
 
 function sortModRecords(mods: ApiModRecord[]): ApiModRecord[] {
   return [...mods].sort((left, right) =>
-    left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' })
+    left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' }),
   )
 }
 
 function sortScanResponse(dirPath: string, mods: ApiModRecord[]): ScanResponse {
   return {
     dirPath,
-    mods: sortModRecords(mods)
+    mods: sortModRecords(mods),
   }
 }
 
@@ -396,7 +390,7 @@ async function streamUpgrade(res: ServerResponse, body: UpgradeRequest) {
   const sendProgress = (progress: UpgradeProgress) => {
     writeEvent(res, {
       type: 'progress',
-      progress
+      progress,
     })
   }
 
@@ -404,13 +398,13 @@ async function streamUpgrade(res: ServerResponse, body: UpgradeRequest) {
     const result = await upgradeMod(body, sendProgress)
     writeEvent(res, {
       type: 'complete',
-      result
+      result,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeEvent(res, {
       type: 'error',
-      message
+      message,
     })
   } finally {
     res.end()
@@ -419,7 +413,7 @@ async function streamUpgrade(res: ServerResponse, body: UpgradeRequest) {
 
 async function upgradeMod(
   body: UpgradeRequest,
-  onProgress?: (progress: UpgradeProgress) => void
+  onProgress?: (progress: UpgradeProgress) => void,
 ): Promise<ScanResponse> {
   const dirPath = getDefaultModsDir()
   const installDir = body.installDir ? path.resolve(body.installDir) : ''
@@ -437,7 +431,7 @@ async function upgradeMod(
   onProgress?.({
     phase: 'resolving',
     message: '正在解析下载地址',
-    percent: 5
+    percent: 5,
   })
   const downloadUrl = await resolveDownloadUrl(downloadSource, hubPageUrl)
 
@@ -452,7 +446,7 @@ async function upgradeMod(
     onProgress?.({
       phase: 'extracting',
       message: `正在解压安装包到: ${extractDir}`,
-      percent: 76
+      percent: 76,
     })
     await fs.mkdir(extractDir, { recursive: true })
     await extractArchive(zipPath, extractDir)
@@ -465,7 +459,7 @@ async function upgradeMod(
     onProgress?.({
       phase: 'installing',
       message: `正在安装到 Mod 目录: ${installDir}`,
-      percent: 88
+      percent: 88,
     })
 
     const savedSettingsDir = path.join(installDir, 'Saved Settings')
@@ -520,13 +514,13 @@ async function upgradeMod(
     onProgress?.({
       phase: 'scanning',
       message: '正在读取 Mod 信息',
-      percent: 96
+      percent: 96,
     })
     const localMod = await readSingleMod(installDir)
     onProgress?.({
       phase: 'completed',
       message: '升级完成',
-      percent: 100
+      percent: 100,
     })
 
     const dirPath = getDefaultModsDir()
@@ -662,7 +656,7 @@ function buildHubBrowserHeaders(options: HubBrowserHeaderOptions = {}): Record<s
     'Sec-CH-UA': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
     'Sec-CH-UA-Mobile': '?0',
     'Sec-CH-UA-Platform': '"Windows"',
-    'Upgrade-Insecure-Requests': '1'
+    'Upgrade-Insecure-Requests': '1',
   }
 
   if (options.referer) {
@@ -699,7 +693,7 @@ function buildHubDownloadHeaders(referer: string): Record<string, string> {
     fetchDest: 'document',
     fetchMode: 'navigate',
     fetchSite: 'same-origin',
-    fetchUser: '?1'
+    fetchUser: '?1',
   })
 }
 
@@ -710,7 +704,7 @@ function logHubCookies() {
 async function hubFetch(
   url: string,
   init?: RequestInit,
-  browserOptions?: HubBrowserHeaderOptions
+  browserOptions?: HubBrowserHeaderOptions,
 ): Promise<Response> {
   const extraHeaders: Record<string, string> = {}
   if (init?.headers instanceof Headers) {
@@ -729,22 +723,26 @@ async function hubFetch(
     ...init,
     headers: {
       ...buildHubBrowserHeaders(browserOptions),
-      ...extraHeaders
+      ...extraHeaders,
     },
-    redirect: init?.redirect ?? 'follow'
+    redirect: init?.redirect ?? 'follow',
   })
 
   applySetCookies(parseSetCookieHeaders(response))
   return response
 }
 
-async function warmHubPage(url: string, referer: string, fetchSite: 'none' | 'same-origin' = 'same-origin') {
+async function warmHubPage(
+  url: string,
+  referer: string,
+  fetchSite: 'none' | 'same-origin' = 'same-origin',
+) {
   const response = await hubFetch(url, undefined, {
     referer,
     fetchDest: 'document',
     fetchMode: 'navigate',
     fetchSite,
-    fetchUser: fetchSite === 'none' ? '?1' : undefined
+    fetchUser: fetchSite === 'none' ? '?1' : undefined,
   })
 
   if (!response.ok) {
@@ -755,17 +753,15 @@ async function warmHubPage(url: string, referer: string, fetchSite: 'none' | 'sa
   pageCache.set(url, { html, timestamp: Date.now() })
 }
 
-async function ensureHubCookies(
-  force = false,
-  modPageUrl?: string
-): Promise<string | undefined> {
+async function ensureHubCookies(force = false, modPageUrl?: string): Promise<string | undefined> {
   if (!force && hubCookieJar.size > 0 && !modPageUrl) {
     return getHubCookieHeader()
   }
 
   if (force) {
     hubCookieJar.clear()
-  }  await loadHubCookiesFromConfig()
+  }
+  await loadHubCookiesFromConfig()
 
   await warmHubPage(`${HUB_BASE}/`, `${HUB_BASE}/`, 'none')
   await warmHubPage(HUB_MODS_LIST_URL, `${HUB_BASE}/`, 'same-origin')
@@ -778,10 +774,7 @@ async function ensureHubCookies(
   return logHubCookies()
 }
 
-function resolveHubDownloadReferer(
-  downloadUrl: string,
-  hubPageUrl?: string
-): string {
+function resolveHubDownloadReferer(downloadUrl: string, hubPageUrl?: string): string {
   const normalizedPage = normalizeHubPageUrl(hubPageUrl ?? '')
   if (normalizedPage) {
     return normalizedPage
@@ -798,7 +791,7 @@ function resolveHubDownloadReferer(
 async function hubDownloadFetch(
   downloadUrl: string,
   init?: RequestInit,
-  hubPageUrl?: string
+  hubPageUrl?: string,
 ): Promise<Response> {
   const referer = resolveHubDownloadReferer(downloadUrl, hubPageUrl)
   const extraHeaders: Record<string, string> = {}
@@ -818,9 +811,9 @@ async function hubDownloadFetch(
     ...init,
     headers: {
       ...buildHubDownloadHeaders(referer),
-      ...extraHeaders
+      ...extraHeaders,
     },
-    redirect: init?.redirect ?? 'follow'
+    redirect: init?.redirect ?? 'follow',
   })
 
   applySetCookies(parseSetCookieHeaders(response))
@@ -834,7 +827,7 @@ class BufferedFileWriter {
   constructor(
     private readonly fileHandle: FileHandle,
     private writeOffset: number,
-    private readonly flushSize = DOWNLOAD_WRITE_BUFFER_BYTES
+    private readonly flushSize = DOWNLOAD_WRITE_BUFFER_BYTES,
   ) {}
 
   async write(data: Uint8Array): Promise<number> {
@@ -870,7 +863,7 @@ class BufferedFileWriter {
 function buildDownloadSegments(totalBytes: number): DownloadSegment[] {
   const count = Math.min(
     DOWNLOAD_MAX_PARALLEL,
-    Math.max(1, Math.ceil(totalBytes / DOWNLOAD_MIN_SEGMENT_BYTES))
+    Math.max(1, Math.ceil(totalBytes / DOWNLOAD_MIN_SEGMENT_BYTES)),
   )
   const segmentSize = Math.ceil(totalBytes / count)
 
@@ -883,7 +876,7 @@ function buildDownloadSegments(totalBytes: number): DownloadSegment[] {
 
 async function probeDownloadMeta(
   downloadUrl: string,
-  hubPageUrl?: string
+  hubPageUrl?: string,
 ): Promise<{
   totalBytes: number
   acceptsRanges: boolean
@@ -891,9 +884,9 @@ async function probeDownloadMeta(
   let response = await hubDownloadFetch(
     downloadUrl,
     {
-      method: 'HEAD'
+      method: 'HEAD',
     },
-    hubPageUrl
+    hubPageUrl,
   )
 
   if (!response.ok || response.status === 405 || response.status === 501) {
@@ -901,10 +894,10 @@ async function probeDownloadMeta(
       downloadUrl,
       {
         headers: {
-          Range: 'bytes=0-0'
-        }
+          Range: 'bytes=0-0',
+        },
       },
-      hubPageUrl
+      hubPageUrl,
     )
   }
 
@@ -930,13 +923,13 @@ async function probeDownloadMeta(
 
   return {
     totalBytes: Number.isFinite(totalBytes) && totalBytes > 0 ? totalBytes : 0,
-    acceptsRanges
+    acceptsRanges,
   }
 }
 
 function createDownloadProgressReporter(
   totalBytes: number,
-  onProgress?: (progress: UpgradeProgress) => void
+  onProgress?: (progress: UpgradeProgress) => void,
 ) {
   let downloadedBytes = 0
   let lastPercent = -1
@@ -945,10 +938,7 @@ function createDownloadProgressReporter(
   return (deltaBytes: number, message: string) => {
     downloadedBytes += deltaBytes
     const now = Date.now()
-    const phasePercent =
-      totalBytes > 0
-        ? 12 + (downloadedBytes / totalBytes) * 58
-        : 35
+    const phasePercent = totalBytes > 0 ? 12 + (downloadedBytes / totalBytes) * 58 : 35
     const currentPercent = Math.max(12, Math.min(70, Math.round(phasePercent)))
 
     if (currentPercent === lastPercent && now - lastReportAt < 200) {
@@ -959,11 +949,8 @@ function createDownloadProgressReporter(
     lastReportAt = now
     onProgress?.({
       phase: 'downloading',
-      message:
-        totalBytes > 0
-          ? message
-          : `${message} (${formatBytes(downloadedBytes)})`,
-      percent: currentPercent
+      message: totalBytes > 0 ? message : `${message} (${formatBytes(downloadedBytes)})`,
+      percent: currentPercent,
     })
   }
 }
@@ -972,7 +959,7 @@ async function streamResponseToFile(
   response: Response,
   fileHandle: FileHandle,
   startOffset: number,
-  reportProgress: (deltaBytes: number) => void
+  reportProgress: (deltaBytes: number) => void,
 ) {
   if (!response.body) {
     throw new Error('Download stream is unavailable')
@@ -1009,17 +996,16 @@ async function downloadArchive(
   downloadUrl: string,
   zipPath: string,
   onProgress?: (progress: UpgradeProgress) => void,
-  hubPageUrl?: string
+  hubPageUrl?: string,
 ) {
   onProgress?.({
     phase: 'downloading',
     message: `正在连接下载服务器: ${downloadUrl}`,
-    percent: 10
+    percent: 10,
   })
 
   const { totalBytes, acceptsRanges } = await probeDownloadMeta(downloadUrl, hubPageUrl)
-  const supportsSegmentedDownload =
-    acceptsRanges && totalBytes > DOWNLOAD_MIN_SEGMENT_BYTES
+  const supportsSegmentedDownload = acceptsRanges && totalBytes > DOWNLOAD_MIN_SEGMENT_BYTES
 
   try {
     if (supportsSegmentedDownload) {
@@ -1032,7 +1018,7 @@ async function downloadArchive(
       await fs.rm(zipPath, { force: true }).catch(() => undefined)
       await downloadArchiveSingleStream(downloadUrl, zipPath, totalBytes, onProgress, hubPageUrl, {
         message: '分段下载不可用，正在切换为普通下载',
-        percent: 18
+        percent: 18,
       })
     } else {
       throw error
@@ -1042,7 +1028,7 @@ async function downloadArchive(
   onProgress?.({
     phase: 'downloading',
     message: '下载完成',
-    percent: 72
+    percent: 72,
   })
 }
 
@@ -1052,12 +1038,12 @@ async function downloadArchiveSingleStream(
   totalBytes: number,
   onProgress?: (progress: UpgradeProgress) => void,
   hubPageUrl?: string,
-  initialProgress?: Pick<UpgradeProgress, 'message' | 'percent'>
+  initialProgress?: Pick<UpgradeProgress, 'message' | 'percent'>,
 ) {
   if (initialProgress) {
     onProgress?.({
       phase: 'downloading',
-      ...initialProgress
+      ...initialProgress,
     })
   }
 
@@ -1088,10 +1074,7 @@ async function downloadArchiveSingleStream(
       ? totalBytes
       : Number.parseInt(response.headers.get('content-length') ?? '', 10) || 0
 
-  const reportProgress = createDownloadProgressReporter(
-    resolvedTotalBytes,
-    onProgress
-  )
+  const reportProgress = createDownloadProgressReporter(resolvedTotalBytes, onProgress)
 
   const fileHandle = await fs.open(zipPath, 'w')
   try {
@@ -1107,7 +1090,7 @@ async function downloadWithPowerShell(
   downloadUrl: string,
   zipPath: string,
   hubPageUrl?: string,
-  onProgress?: (progress: UpgradeProgress) => void
+  onProgress?: (progress: UpgradeProgress) => void,
 ) {
   const referer = resolveHubDownloadReferer(downloadUrl, hubPageUrl)
   const cookie = getHubCookieHeader() ?? ''
@@ -1120,7 +1103,7 @@ async function downloadWithPowerShell(
     `$wc.Headers.Add("Referer", "${referer.replace(/"/g, '""')}")`,
     cookie ? `$wc.Headers.Add("Cookie", "${cookie.replace(/"/g, '""')}")` : '',
     `$wc.DownloadFile("${downloadUrl.replace(/"/g, '""')}", "${zipPath.replace(/\\/g, '\\\\').replace(/"/g, '""')}")`,
-    'Write-Output "OK"'
+    'Write-Output "OK"',
   ]
     .filter(Boolean)
     .join('; ')
@@ -1128,23 +1111,18 @@ async function downloadWithPowerShell(
   onProgress?.({
     phase: 'downloading',
     message: `正在通过系统通道下载: powershell -Command "${psScript.substring(0, 100)}..."`,
-    percent: 15
+    percent: 15,
   })
 
-  await execFileAsync('powershell.exe', [
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    psScript
-  ], {
+  await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
     windowsHide: true,
-    timeout: 300_000
+    timeout: 300_000,
   })
 
   onProgress?.({
     phase: 'downloading',
     message: '下载完成',
-    percent: 72
+    percent: 72,
   })
 }
 
@@ -1152,7 +1130,7 @@ async function downloadWithCurl(
   downloadUrl: string,
   zipPath: string,
   hubPageUrl?: string,
-  onProgress?: (progress: UpgradeProgress) => void
+  onProgress?: (progress: UpgradeProgress) => void,
 ) {
   const referer = resolveHubDownloadReferer(downloadUrl, hubPageUrl)
   const cookie = getHubCookieHeader() ?? ''
@@ -1160,19 +1138,25 @@ async function downloadWithCurl(
   onProgress?.({
     phase: 'downloading',
     message: '正在通过系统通道下载',
-    percent: 15
+    percent: 15,
   })
 
   const args = [
     '-L',
     '--silent',
     '--show-error',
-    '--max-time', '300',
-    '--retry', '2',
-    '--retry-delay', '1',
-    '-o', zipPath,
-    '-H', `User-Agent: ${HUB_BROWSER_USER_AGENT}`,
-    '-H', `Referer: ${referer}`,
+    '--max-time',
+    '300',
+    '--retry',
+    '2',
+    '--retry-delay',
+    '1',
+    '-o',
+    zipPath,
+    '-H',
+    `User-Agent: ${HUB_BROWSER_USER_AGENT}`,
+    '-H',
+    `Referer: ${referer}`,
   ]
 
   if (cookie) {
@@ -1183,13 +1167,13 @@ async function downloadWithCurl(
 
   await execFileAsync('curl.exe', args, {
     windowsHide: true,
-    timeout: 360_000
+    timeout: 360_000,
   })
 
   onProgress?.({
     phase: 'downloading',
     message: '下载完成',
-    percent: 72
+    percent: 72,
   })
 }
 
@@ -1198,7 +1182,7 @@ async function downloadArchiveInSegments(
   zipPath: string,
   totalBytes: number,
   onProgress?: (progress: UpgradeProgress) => void,
-  hubPageUrl?: string
+  hubPageUrl?: string,
 ) {
   const segments = buildDownloadSegments(totalBytes)
   const fileHandle = await fs.open(zipPath, 'w')
@@ -1213,7 +1197,7 @@ async function downloadArchiveInSegments(
     onProgress?.({
       phase: 'downloading',
       message: `正在并行下载更新包（${segments.length} 路）`,
-      percent: currentPercent
+      percent: currentPercent,
     })
   }
 
@@ -1222,44 +1206,44 @@ async function downloadArchiveInSegments(
       segments.map((segment, segmentIndex) => ({ segment, segmentIndex })),
       DOWNLOAD_MAX_PARALLEL,
       async ({ segment, segmentIndex }) => {
-      const response = await hubDownloadFetch(
-        downloadUrl,
-        {
-          headers: {
-            Range: `bytes=${segment.start}-${segment.end}`
+        const response = await hubDownloadFetch(
+          downloadUrl,
+          {
+            headers: {
+              Range: `bytes=${segment.start}-${segment.end}`,
+            },
+          },
+          hubPageUrl,
+        )
+
+        if (response.status !== 206 || !response.body) {
+          throw new Error('Segmented download is not supported by the server')
+        }
+
+        const writer = new BufferedFileWriter(fileHandle, segment.start)
+        const reader = response.body.getReader()
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            break
           }
-        },
-        hubPageUrl
-      )
 
-      if (response.status !== 206 || !response.body) {
-        throw new Error('Segmented download is not supported by the server')
-      }
+          if (!value) {
+            continue
+          }
 
-      const writer = new BufferedFileWriter(fileHandle, segment.start)
-      const reader = response.body.getReader()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          break
+          const flushed = await writer.write(value)
+          if (flushed > 0) {
+            reportProgress(segmentIndex, flushed)
+          }
         }
 
-        if (!value) {
-          continue
-        }
-
-        const flushed = await writer.write(value)
+        const flushed = await writer.flush()
         if (flushed > 0) {
           reportProgress(segmentIndex, flushed)
         }
-      }
-
-      const flushed = await writer.flush()
-      if (flushed > 0) {
-        reportProgress(segmentIndex, flushed)
-      }
-    }
+      },
     )
   } finally {
     await fileHandle.close()
@@ -1274,7 +1258,7 @@ async function enrichMod(localMod: LocalMod, forceRefresh = false): Promise<ApiM
     sizeText: localMod.sizeText,
     manifestPath: localMod.manifestPath,
     installDir: localMod.installDir,
-    status: 'unknown'
+    status: 'unknown',
   }
 
   try {
@@ -1288,11 +1272,11 @@ async function enrichMod(localMod: LocalMod, forceRefresh = false): Promise<ApiM
             ...base,
             remoteVersion: cachedHubVersion,
             url: cachedHubUrl,
-            status: computeStatus(localMod.version, cachedHubVersion)
+            status: computeStatus(localMod.version, cachedHubVersion),
           },
           cachedHubUrl,
-          forceRefresh
-        )
+          forceRefresh,
+        ),
       )
     }
 
@@ -1307,18 +1291,22 @@ async function enrichMod(localMod: LocalMod, forceRefresh = false): Promise<ApiM
           ...base,
           remoteVersion: hubListing.version,
           url: hubListing.url,
-          status: computeStatus(localMod.version, hubListing.version)
+          status: computeStatus(localMod.version, hubListing.version),
         },
         hubListing.url,
-        forceRefresh
-      )
+        forceRefresh,
+      ),
     )
   } catch {
     return finalizeModRecord(base)
   }
 }
 
-async function applyHubDetail(record: ApiModRecord, modUrl?: string, forceRefresh = false): Promise<ApiModRecord> {
+async function applyHubDetail(
+  record: ApiModRecord,
+  modUrl?: string,
+  forceRefresh = false,
+): Promise<ApiModRecord> {
   if (!modUrl?.startsWith(`${HUB_BASE}/Mod/`)) {
     return record
   }
@@ -1329,7 +1317,7 @@ async function applyHubDetail(record: ApiModRecord, modUrl?: string, forceRefres
       ...record,
       sizeText: detail.sizeText ?? record.sizeText,
       downloadUrl: detail.downloadUrl ?? record.downloadUrl,
-      changelogEntries: detail.changelog
+      changelogEntries: detail.changelog,
     }
   } catch {
     return record
@@ -1339,7 +1327,7 @@ async function applyHubDetail(record: ApiModRecord, modUrl?: string, forceRefres
 async function findHubListing(localMod: LocalMod): Promise<HubListing | null> {
   const queries = uniqueBy(
     [localMod.displayName, localMod.id, path.basename(localMod.installDir)],
-    (value) => normalizeName(value)
+    (value) => normalizeName(value),
   )
 
   const targetNames = [localMod.displayName, localMod.id, path.basename(localMod.installDir)]
@@ -1354,7 +1342,7 @@ async function findHubListing(localMod: LocalMod): Promise<HubListing | null> {
     return listings.find((listing) => {
       const normalized = normalizeName(listing.title)
       return targetNames.some(
-        (target) => normalized.includes(target) || target.includes(normalized)
+        (target) => normalized.includes(target) || target.includes(normalized),
       )
     })
   }
@@ -1384,17 +1372,14 @@ async function findHubListing(localMod: LocalMod): Promise<HubListing | null> {
     console.warn(
       `[coi-mod-api] Hub 未找到匹配: "${localMod.displayName}" (id=${localMod.id})`,
       `queries: [${queries.map((q) => `"${q}"`).join(', ')}]`,
-      `targets: [${targetNames.map((t) => `"${t}"`).join(', ')}]`
+      `targets: [${targetNames.map((t) => `"${t}"`).join(', ')}]`,
     )
   }
 
   return bestPartial
 }
 
-async function resolveDownloadUrl(
-  sourceUrl: string,
-  hubPageUrl?: string
-): Promise<string> {
+async function resolveDownloadUrl(sourceUrl: string, hubPageUrl?: string): Promise<string> {
   if (sourceUrl.startsWith(DOWNLOAD_URL_PREFIX)) {
     return sourceUrl
   }
@@ -1416,9 +1401,7 @@ async function searchHub(query: string): Promise<HubListing[]> {
     return cached
   }
 
-  const endpoints = [
-    `${HUB_BASE}/Mods/Search?query=${encodeURIComponent(query)}`
-  ]
+  const endpoints = [`${HUB_BASE}/Mods/Search?query=${encodeURIComponent(query)}`]
 
   const results = await (async () => {
     try {
@@ -1443,7 +1426,7 @@ function extractHubListings(html: string): HubListing[] {
   for (const match of html.matchAll(anchorPattern)) {
     const href = match[2]
     const content = normalizeWhitespace(stripTags(decodeHtmlEntities(match[3] ?? '')))
-    const parsed = content.match(/^(.*?)\s+v([0-9][0-9A-Za-z.\-]*)\s+by\b/i)
+    const parsed = content.match(/^(.*?)\s+v([0-9][0-9A-Za-z.-]*)\s+by\b/i)
 
     if (!parsed) {
       continue
@@ -1464,7 +1447,10 @@ function extractHubListings(html: string): HubListing[] {
   return matches
 }
 
-async function fetchModDetailInfo(modUrl: string, forceRefresh = false): Promise<{
+async function fetchModDetailInfo(
+  modUrl: string,
+  forceRefresh = false,
+): Promise<{
   downloadUrl?: string
   sizeText?: string
   changelog?: ChangelogEntry[]
@@ -1476,7 +1462,7 @@ async function fetchModDetailInfo(modUrl: string, forceRefresh = false): Promise
   return {
     downloadUrl: extractDownloadUrlFromDetailHtml(html),
     sizeText: extractFileSizeFromDetailHtml(html),
-    changelog: extractChangelogFromHtml(html)
+    changelog: extractChangelogFromHtml(html),
   }
 }
 
@@ -1509,12 +1495,12 @@ function extractFileSizeFromDetailHtml(html: string): string | undefined {
 
 function extractDownloadUrlFromDetailHtml(html: string): string | undefined {
   const anchorMatches = Array.from(
-    html.matchAll(/<a\b[^>]*href=(["'])(\/Mod\/DownloadMod\/\d+)\1[^>]*>([\s\S]*?)<\/a>/gi)
+    html.matchAll(/<a\b[^>]*href=(["'])(\/Mod\/DownloadMod\/\d+)\1[^>]*>([\s\S]*?)<\/a>/gi),
   )
   const anchors = anchorMatches.map((match) => ({
     href: match[2],
     label: normalizeWhitespace(stripTags(decodeHtmlEntities(match[3] ?? ''))),
-    index: match.index ?? 0
+    index: match.index ?? 0,
   }))
 
   const uniqueCandidates = Array.from(new Set(anchors.map((anchor) => anchor.href)))
@@ -1596,7 +1582,7 @@ async function readSingleMod(installDir: string): Promise<LocalMod | null> {
         manifestPath,
         installDir,
         hubUrl: getManifestUrl(parsed, ['hubUrl', '_hubUrl']),
-        hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion'])
+        hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion']),
       }
     }
   } catch {
@@ -1623,10 +1609,7 @@ async function collectLocalMods(dirPath: string): Promise<LocalMod[]> {
         const displayName = getManifestDisplayName(parsed)
         const authors = getManifestAuthors(parsed)
 
-        if (
-          typeof parsed.id === 'string' &&
-          typeof parsed.version === 'string'
-        ) {
+        if (typeof parsed.id === 'string' && typeof parsed.version === 'string') {
           mods.push({
             id: parsed.id,
             version: parsed.version,
@@ -1636,7 +1619,7 @@ async function collectLocalMods(dirPath: string): Promise<LocalMod[]> {
             manifestPath,
             installDir: currentDir,
             hubUrl: getManifestUrl(parsed, ['hubUrl', '_hubUrl']),
-            hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion'])
+            hubVersion: getManifestUrl(parsed, ['hubVersion', '_hubVersion']),
           })
         }
       } catch {
@@ -1725,7 +1708,7 @@ async function findManifestPath(dirPath: string): Promise<string | null> {
 
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const manifestEntry = entries.find(
-    (entry) => entry.isFile() && entry.name.toLowerCase() === 'manifest.json'
+    (entry) => entry.isFile() && entry.name.toLowerCase() === 'manifest.json',
   )
 
   return manifestEntry ? path.join(dirPath, manifestEntry.name) : null
@@ -1765,7 +1748,7 @@ async function extractArchive(zipPath: string, destinationPath: string) {
   // 优先 tar（Windows 10+ 自带，速度远快于 Expand-Archive）
   try {
     await execFileAsync('tar', ['-xf', zipPath, '-C', destinationPath], {
-      windowsHide: true
+      windowsHide: true,
     })
     return
   } catch {
@@ -1780,11 +1763,11 @@ async function extractArchive(zipPath: string, destinationPath: string) {
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      `Expand-Archive -LiteralPath '${escapedZip}' -DestinationPath '${escapedDest}' -Force`
+      `Expand-Archive -LiteralPath '${escapedZip}' -DestinationPath '${escapedDest}' -Force`,
     ],
     {
-      windowsHide: true
-    }
+      windowsHide: true,
+    },
   )
 }
 
@@ -1798,7 +1781,7 @@ async function fetchText(url: string, referer = HUB_MODS_LIST_URL): Promise<stri
     referer,
     fetchDest: 'document',
     fetchMode: 'navigate',
-    fetchSite: 'same-origin'
+    fetchSite: 'same-origin',
   })
 
   if (!response.ok) {
@@ -1837,13 +1820,12 @@ function normalizeName(value: string): string {
       .replace(/\+\+/g, ' plus plus ')
       .replace(/\+/g, ' plus ')
       .replace(/&/g, ' and ')
-      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' '),
   )
 }
 
 function getDefaultModsDir(): string {
-  const appData =
-    process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming')
+  const appData = process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming')
 
   return path.join(appData, 'Captain of Industry', 'Mods')
 }
@@ -1911,7 +1893,7 @@ async function pathExists(targetPath: string): Promise<boolean> {
 async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
-  mapper: (item: T) => Promise<R>
+  mapper: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let nextIndex = 0

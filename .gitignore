@@ -44,6 +44,8 @@ config/hub.json
 
 # tauri
 src-tauri/target/
+src-tauri/gen/
+.husky/_/
 
 # Build-time copies of bundled resources (copied from project root by prepare-resources.mjs)
 src-tauri/resources/
