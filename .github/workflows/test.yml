@@ -3,6 +3,8 @@ name: Test
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -51,7 +53,15 @@ jobs:
 
       # ── TypeScript check ────────────────────────────────
       - name: TypeScript check
-        run: pnpm tsc --noEmit
+        run: pnpm typecheck
+
+      # ── Lint ────────────────────────────────────────────
+      - name: Lint
+        run: pnpm lint
+
+      # ── Format check ────────────────────────────────────
+      - name: Format check
+        run: pnpm format:check
 
       # ── Run tests (Node) ────────────────────────────────
       - name: Run tests

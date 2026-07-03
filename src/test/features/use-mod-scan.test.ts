@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import type { IModApiService, ScanModsResponse, ModRecord, UpgradeEvent } from '@/shared/types/api'
+import type {
+  IModApiService,
+  ModRecord,
+  ScanModsResponse,
+  UpgradeEvent,
+  UpgradeResult,
+} from '@/shared/types/api'
 
 // Mock the entire api-service module
 const mockLocalScan = vi.fn<() => Promise<ScanModsResponse>>()
@@ -289,7 +295,7 @@ describe('useModScan', () => {
       ]
     })
 
-    let checkResolveFns: Array<(v: ModRecord) => void> = []
+    const checkResolveFns: Array<(v: ModRecord) => void> = []
     mockCheckMod.mockImplementation(
       () => new Promise<ModRecord>((resolve) => checkResolveFns.push(resolve))
     )
@@ -434,8 +440,8 @@ describe('useModScan', () => {
     await act(async () => { await result.current.checkUpdates() })
 
     // Start both upgrades (they run concurrently)
-    let p1: Promise<void>
-    let p2: Promise<void>
+    let p1: Promise<UpgradeResult>
+    let p2: Promise<UpgradeResult>
     await act(async () => {
       p1 = result.current.upgrade(result.current.mods.find(m => m.id === 'mod-a')!)
       p2 = result.current.upgrade(result.current.mods.find(m => m.id === 'mod-b')!)

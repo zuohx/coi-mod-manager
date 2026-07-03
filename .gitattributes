@@ -1,0 +1,3 @@
+# Normalize line endings to LF on checkout across platforms so parsers,
+# golden fixtures, and formatters behave identically on Windows CI.
+* text=auto eol=lf

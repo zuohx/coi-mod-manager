@@ -324,7 +324,7 @@ function extractChangelogFromHtml(html: string): ChangelogEntry[] {
     const rawContent = decodeHtmlEntities(match[2] ?? '')
 
     // Parse title: "v0.4.3 | 2026-05-04" or "0.4.3 | 2026-05-04"
-    const titleMatch = rawTitle.match(/^v?([0-9][0-9A-Za-z.\-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
+    const titleMatch = rawTitle.match(/^v?([0-9][0-9A-Za-z.-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
     const version = titleMatch?.[1] ?? rawTitle
     const date = titleMatch?.[2] ?? ''
 
@@ -334,7 +334,7 @@ function extractChangelogFromHtml(html: string): ChangelogEntry[] {
       const trimmed = line.trim()
       // Skip empty lines and lines that duplicate the title
       if (!trimmed) return false
-      if (/^v?[0-9][0-9A-Za-z.\-]*\s*\|/.test(trimmed)) return false
+      if (/^v?[0-9][0-9A-Za-z.-]*\s*\|/.test(trimmed)) return false
       return true
     })
 
@@ -1443,7 +1443,7 @@ function extractHubListings(html: string): HubListing[] {
   for (const match of html.matchAll(anchorPattern)) {
     const href = match[2]
     const content = normalizeWhitespace(stripTags(decodeHtmlEntities(match[3] ?? '')))
-    const parsed = content.match(/^(.*?)\s+v([0-9][0-9A-Za-z.\-]*)\s+by\b/i)
+    const parsed = content.match(/^(.*?)\s+v([0-9][0-9A-Za-z.-]*)\s+by\b/i)
 
     if (!parsed) {
       continue
