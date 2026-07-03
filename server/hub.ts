@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import { decodeHtmlEntities, normalizeWhitespace, stripTags } from './util'
+import * as cheerio from 'cheerio'
+
+import { normalizeWhitespace } from './util'
 import type {
   ChangelogEntry,
   HubBrowserHeaderOptions,
@@ -345,30 +347,36 @@ export async function searchHub(query: string): Promise<HubListing[]> {
 }
 
 export function extractHubListings(html: string): HubListing[] {
+  const document = cheerio.load(html)
   const matches: HubListing[] = []
   const seen = new Set<string>()
-  const anchorPattern = /<a\b[^>]*href=(["'])(\/Mod\/\d+\/[^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi
 
-  for (const match of html.matchAll(anchorPattern)) {
-    const href = match[2]
-    const content = normalizeWhitespace(stripTags(decodeHtmlEntities(match[3] ?? '')))
-    const parsed = content.match(/^(.*?)\s+v([0-9][0-9A-Za-z.-]*)\s+by\b/i)
+  document('a[href]').each((_, element) => {
+    const href = document(element).attr('href')
+    if (!href || !href.startsWith('/Mod/')) {
+      return
+    }
 
+    const url = new URL(href, HUB_BASE).toString()
+    if (seen.has(url)) {
+      return
+    }
+
+    const content = normalizeWhitespace(document(element).text())
+    const parsed = content.match(/^(.*?)\s+v([0-9][0-9A-Za-z.-]*)\s+(?:by\b.*)?$/i)
     if (!parsed) {
-      continue
+      return
     }
 
     const title = parsed[1]?.trim()
     const version = parsed[2]?.trim()
-    const url = new URL(href, HUB_BASE).toString()
-
-    if (!title || seen.has(url)) {
-      continue
+    if (!title) {
+      return
     }
 
     seen.add(url)
     matches.push({ title, version, url })
-  }
+  })
 
   return matches
 }
@@ -395,8 +403,10 @@ export async function fetchLatestDownloadUrl(modUrl: string): Promise<string | u
 }
 
 export function extractFileSizeFromDetailHtml(html: string): string | undefined {
+  const document = cheerio.load(html)
+
   const findSizeInContext = (context: string): string | undefined => {
-    const match = context.match(/File\s*size[\s\S]{0,240}?(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i)
+    const match = context.match(/file\s*size[\s\S]{0,240}?(\d+(?:\.\d+)?\s*(?:KB|MB|GB|B))/i)
     if (!match?.[1]) {
       return undefined
     }
@@ -404,9 +414,10 @@ export function extractFileSizeFromDetailHtml(html: string): string | undefined 
     return normalizeWhitespace(match[1])
   }
 
-  const latestIndex = html.search(/\bLatest\b/i)
+  const rootText = document.root().text()
+  const latestIndex = rootText.search(/\bLatest\b/i)
   if (latestIndex >= 0) {
-    const afterLatest = html.slice(latestIndex, Math.min(html.length, latestIndex + 2400))
+    const afterLatest = rootText.slice(latestIndex, Math.min(rootText.length, latestIndex + 2400))
     const latestSize = findSizeInContext(afterLatest)
     if (latestSize) {
       return latestSize
@@ -417,30 +428,11 @@ export function extractFileSizeFromDetailHtml(html: string): string | undefined 
 }
 
 export function extractDownloadUrlFromDetailHtml(html: string): string | undefined {
-  const anchorMatches = Array.from(
-    html.matchAll(/<a\b[^>]*href=(["'])(\/Mod\/DownloadMod\/\d+)\1[^>]*>([\s\S]*?)<\/a>/gi)
-  )
-  const anchors = anchorMatches.map((match) => ({
-    href: match[2],
-    label: normalizeWhitespace(stripTags(decodeHtmlEntities(match[3] ?? ''))),
-    index: match.index ?? 0,
-  }))
-
-  const uniqueCandidates = Array.from(new Set(anchors.map((anchor) => anchor.href)))
-
-  const labeledAnchor = anchors.find((anchor) => /download/i.test(anchor.label))
-  if (labeledAnchor) {
-    const contextStart = Math.max(0, labeledAnchor.index - 240)
-    const contextEnd = Math.min(html.length, labeledAnchor.index + 240)
-    const context = html.slice(contextStart, contextEnd)
-
-    if (/latest/i.test(context)) {
-      return new URL(labeledAnchor.href, HUB_BASE).toString()
-    }
-  }
-
-  if (labeledAnchor) {
-    return new URL(labeledAnchor.href, HUB_BASE).toString()
+  const document = cheerio.load(html)
+  const firstDownloadAnchor = document('a[href^="/Mod/DownloadMod/"]').first()
+  const href = firstDownloadAnchor.attr('href')
+  if (href) {
+    return new URL(href, HUB_BASE).toString()
   }
 
   const rawMatch = html.match(/\/Mod\/DownloadMod\/\d+/i)
@@ -448,47 +440,43 @@ export function extractDownloadUrlFromDetailHtml(html: string): string | undefin
     return new URL(rawMatch[0], HUB_BASE).toString()
   }
 
-  if (uniqueCandidates.length === 0) {
-    return undefined
-  }
-
-  return new URL(uniqueCandidates[0], HUB_BASE).toString()
+  return undefined
 }
 
 export function extractChangelogFromHtml(html: string): ChangelogEntry[] {
-  const tabStart = html.indexOf('id="tab-changelog"')
-  if (tabStart < 0) {
+  const document = cheerio.load(html)
+  const tabElement = document('#tab-changelog').first()
+  if (!tabElement.length) {
     return []
   }
 
-  const afterTab = html.slice(tabStart)
-  const nextTabIndex = afterTab.indexOf('id="tab-', 20)
-  const tabContent = nextTabIndex > 0 ? afterTab.slice(0, nextTabIndex) : afterTab
-
   const entries: ChangelogEntry[] = []
-  const cardPattern = /<h4[^>]*>([\s\S]*?)<\/h4>\s*<pre[^>]*>([\s\S]*?)<\/pre>/gi
+  const titleLineRe = /^v?[0-9][0-9A-Za-z.-]*\s*\|/i
 
-  for (const match of tabContent.matchAll(cardPattern)) {
-    const rawTitle = normalizeWhitespace(stripTags(decodeHtmlEntities(match[1] ?? '')))
-    const rawContent = decodeHtmlEntities(match[2] ?? '')
+  tabElement.find('.darkerGreyBg').each((_, card) => {
+    const h4Text = document(card).find('h4').first().text()
+    const h4Clean = normalizeWhitespace(h4Text)
 
-    const titleMatch = rawTitle.match(/^v?([0-9][0-9A-Za-z.-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
-    const version = titleMatch?.[1] ?? rawTitle
+    const titleMatch = h4Clean.match(/^v?([0-9][0-9A-Za-z.-]*)\s*\|\s*(\d{4}-\d{2}-\d{2})/)
+    const version = titleMatch?.[1] ?? h4Clean
     const date = titleMatch?.[2] ?? ''
 
-    const lines = rawContent.split(/\n|&#xA;|&#10;/)
+    if (!version) {
+      return
+    }
+
+    const preText = document(card).find('pre').first().text()
+    const lines = preText.split(/\n|&#xA;|&#10;/)
     const contentLines = lines.filter((line) => {
       const trimmed = line.trim()
       if (!trimmed) return false
-      if (/^v?[0-9][0-9A-Za-z.-]*\s*\|/.test(trimmed)) return false
+      if (titleLineRe.test(trimmed)) return false
       return true
     })
 
     const content = contentLines.join('\n').trim()
-    if (version) {
-      entries.push({ version, date, content })
-    }
-  }
+    entries.push({ version, date, content })
+  })
 
   return entries
 }
