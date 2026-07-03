@@ -25,14 +25,15 @@
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-updater": "^2.10.1",
+    "cheerio": "1.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.5.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
-    "@eslint/js": "^10.0.1",
     "@types/node": "^25.8.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
@@ -46,8 +47,8 @@
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.8",
     "prettier": "^3.9.4",
-    "typescript-eslint": "^8.62.1",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.62.1",
     "vite": "^6.3.4",
     "vitest": "^3.2.3"
   },
