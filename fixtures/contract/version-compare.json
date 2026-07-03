@@ -1,0 +1,12 @@
+[
+  { "left": "1.0.0", "right": "1.0.0", "sign": 0 },
+  { "left": "1.2.0", "right": "1.0.0", "sign": 1 },
+  { "left": "1.0.0", "right": "1.2.0", "sign": -1 },
+  { "left": "1.2", "right": "1.2.0", "sign": 0 },
+  { "left": "01.02.003", "right": "1.2.3", "sign": 0 },
+  { "left": "1.10.0", "right": "1.2.9", "sign": 1 },
+  { "left": "v2.0.0", "right": "1.9.9", "sign": 1 },
+  { "left": "1.2.3-beta", "right": "1.2.3", "sign": 0 },
+  { "left": "1.2.3-beta.1", "right": "1.2.3", "sign": 1 },
+  { "left": "1.2.3-alpha", "right": "1.2.3-beta", "sign": 0 }
+]

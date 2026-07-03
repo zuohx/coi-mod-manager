@@ -325,12 +325,36 @@ fn urlencoding(s: &str) -> String {
 }
 
 fn decode_html_entities(text: &str) -> String {
-    text.replace("&nbsp;", " ")
+    let named = text
+        .replace("&nbsp;", " ")
         .replace("&amp;", "&")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
         .replace("&lt;", "<")
-        .replace("&gt;", ">")
+        .replace("&gt;", ">");
+
+    let hex_re = regex_lite::Regex::new(r"&#x([0-9a-fA-F]+);").unwrap();
+    let decimal_re = regex_lite::Regex::new(r"&#(\d+);").unwrap();
+
+    let decoded_hex = hex_re
+        .replace_all(&named, |caps: &regex_lite::Captures<'_>| {
+            caps.get(1)
+                .and_then(|m| u32::from_str_radix(m.as_str(), 16).ok())
+                .and_then(char::from_u32)
+                .map(|ch| ch.to_string())
+                .unwrap_or_else(|| caps.get(0).map(|m| m.as_str().to_string()).unwrap_or_default())
+        })
+        .to_string();
+
+    decimal_re
+        .replace_all(&decoded_hex, |caps: &regex_lite::Captures<'_>| {
+            caps.get(1)
+                .and_then(|m| m.as_str().parse::<u32>().ok())
+                .and_then(char::from_u32)
+                .map(|ch| ch.to_string())
+                .unwrap_or_else(|| caps.get(0).map(|m| m.as_str().to_string()).unwrap_or_default())
+        })
+        .to_string()
 }
 
 fn strip_tags(text: &str) -> String {
@@ -527,6 +551,61 @@ mod tests {
             assert_eq!(got.version, want.version);
             assert_eq!(got.date, want.date);
             assert_eq!(got.content, want.content);
+        }
+    }
+
+    fn contract_fixture_path(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join("contract")
+            .join(name)
+    }
+
+    fn read_contract_fixture(name: &str) -> String {
+        std::fs::read_to_string(contract_fixture_path(name))
+            .unwrap_or_else(|e| panic!("failed to read contract fixture {name}: {e}"))
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TextCase {
+        #[serde(rename = "in")]
+        input: String,
+        #[serde(rename = "out")]
+        output: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TextFixtures {
+        #[serde(rename = "decodeHtmlEntities")]
+        decode_html_entities: Vec<TextCase>,
+        #[serde(rename = "stripTags")]
+        strip_tags: Vec<TextCase>,
+        #[serde(rename = "normalizeWhitespace")]
+        normalize_whitespace: Vec<TextCase>,
+        #[serde(rename = "normalizeName")]
+        normalize_name: Vec<TextCase>,
+    }
+
+    #[test]
+    fn contract_text_normalization_matches_golden() {
+        let fixtures: TextFixtures =
+            serde_json::from_str(&read_contract_fixture("text-normalize.json")).unwrap();
+
+        for case in fixtures.decode_html_entities {
+            assert_eq!(decode_html_entities(&case.input), case.output);
+        }
+
+        for case in fixtures.strip_tags {
+            assert_eq!(strip_tags(&case.input), case.output);
+        }
+
+        for case in fixtures.normalize_whitespace {
+            assert_eq!(normalize_whitespace(&case.input), case.output);
+        }
+
+        for case in fixtures.normalize_name {
+            assert_eq!(normalize_name(&case.input), case.output);
         }
     }
 }

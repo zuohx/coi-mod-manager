@@ -1,0 +1,25 @@
+{
+  "decodeHtmlEntities": [
+    { "in": "A&amp;B", "out": "A&B" },
+    { "in": "&#38;", "out": "&" },
+    { "in": "&#x26;", "out": "&" },
+    { "in": "&#39;", "out": "'" },
+    { "in": "&nbsp;x", "out": " x" },
+    { "in": "Tom &amp; Jerry &#38; Co. &#x26;", "out": "Tom & Jerry & Co. &" }
+  ],
+  "stripTags": [
+    { "in": "<a>hello</a> world", "out": " hello  world" },
+    { "in": "<div><span>nested</span> text</div>", "out": "  nested  text " },
+    { "in": "<p> line1<br/>line2 </p>", "out": "  line1 line2  " }
+  ],
+  "normalizeWhitespace": [
+    { "in": "  a   b  ", "out": "a b" },
+    { "in": "a\n\tb", "out": "a b" },
+    { "in": " \n \t ", "out": "" }
+  ],
+  "normalizeName": [
+    { "in": "My Mod++ v2.0", "out": "my mod plus plus v2 0" },
+    { "in": "Rock & Roll", "out": "rock and roll" },
+    { "in": "Hello---World", "out": "hello world" }
+  ]
+}
