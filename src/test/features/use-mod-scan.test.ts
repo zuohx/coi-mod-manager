@@ -11,15 +11,9 @@ import type {
 // Mock the entire api-service module
 const mockLocalScan = vi.fn<() => Promise<ScanModsResponse>>()
 const mockCheckMod = vi.fn<(installDir: string) => Promise<ModRecord>>()
-const mockStreamUpgrade =
-  vi.fn<
-    (
-      installDir: string,
-      downloadUrl: string,
-      hubPageUrl: string | undefined,
-      onEvent: (event: UpgradeEvent) => void,
-    ) => Promise<ScanModsResponse>
-  >()
+const mockStreamUpgrade = vi.fn<
+  (installDir: string, downloadUrl: string, hubPageUrl: string | undefined, onEvent: (event: UpgradeEvent) => void) => Promise<ScanModsResponse>
+>()
 
 const mockService: IModApiService = {
   localScan: mockLocalScan,
@@ -44,7 +38,7 @@ const localModFixture: ModRecord = {
   downloadUrl: undefined,
   status: 'unknown',
   manifestPath: 'C:\\Mods\\mod-1\\manifest.json',
-  installDir: 'C:\\Mods\\mod-1',
+  installDir: 'C:\\Mods\\mod-1'
 }
 
 const enrichedModFixture: ModRecord = {
@@ -54,7 +48,7 @@ const enrichedModFixture: ModRecord = {
   remoteVersion: '1.2.0',
   url: 'https://hub.coigame.com/Mod/1/Mod-1',
   downloadUrl: 'https://hub.coigame.com/Mod/DownloadMod/1',
-  status: 'update_available',
+  status: 'update_available'
 }
 
 const localModFixture2: ModRecord = {
@@ -68,7 +62,7 @@ const localModFixture2: ModRecord = {
   downloadUrl: undefined,
   status: 'unknown',
   manifestPath: 'C:\\Mods\\mod-2\\manifest.json',
-  installDir: 'C:\\Mods\\mod-2',
+  installDir: 'C:\\Mods\\mod-2'
 }
 
 const enrichedModFixture2: ModRecord = {
@@ -78,7 +72,7 @@ const enrichedModFixture2: ModRecord = {
   remoteVersion: '2.1.0',
   url: 'https://hub.coigame.com/Mod/2/Mod-2',
   downloadUrl: 'https://hub.coigame.com/Mod/DownloadMod/2',
-  status: 'update_available',
+  status: 'update_available'
 }
 
 describe('useModScan', () => {
@@ -108,7 +102,7 @@ describe('useModScan', () => {
   it('should load mods on mount and auto-check updates', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [localModFixture],
+      mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue(enrichedModFixture)
 
@@ -146,40 +140,38 @@ describe('useModScan', () => {
   it('should upgrade a mod and replace list', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [localModFixture],
+      mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue(enrichedModFixture)
-    mockStreamUpgrade.mockImplementation(
-      async (
-        _installDir: string,
-        _downloadUrl: string,
-        _hubPageUrl: string | undefined,
-        onEvent?: (event: UpgradeEvent) => void,
-      ): Promise<ScanModsResponse> => {
-        // Emit progress event (new format: { type: 'progress', progress: {...} })
-        onEvent?.({
-          type: 'progress',
-          progress: {
-            phase: 'downloading',
-            message: '正在下载更新包',
-            percent: 48,
-          },
-        })
-        // Return result via promise
-        return {
-          dirPath: 'C:\\Mods',
-          mods: [
-            {
-              ...enrichedModFixture,
-              version: '1.2.0',
-              sizeText: '1.4 MB',
-              downloadUrl: undefined,
-              status: 'up_to_date',
-            },
-          ],
+    mockStreamUpgrade.mockImplementation(async (
+      _installDir: string,
+      _downloadUrl: string,
+      _hubPageUrl: string | undefined,
+      onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      // Emit progress event (new format: { type: 'progress', progress: {...} })
+      onEvent?.({
+        type: 'progress',
+        progress: {
+          phase: 'downloading',
+          message: '正在下载更新包',
+          percent: 48
         }
-      },
-    )
+      })
+      // Return result via promise
+      return {
+        dirPath: 'C:\\Mods',
+        mods: [
+          {
+            ...enrichedModFixture,
+            version: '1.2.0',
+            sizeText: '1.4 MB',
+            downloadUrl: undefined,
+            status: 'up_to_date'
+          }
+        ]
+      }
+    })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
@@ -201,7 +193,7 @@ describe('useModScan', () => {
       'C:\\Mods\\mod-1',
       'https://hub.coigame.com/Mod/DownloadMod/1',
       'https://hub.coigame.com/Mod/1/Mod-1',
-      expect.any(Function),
+      expect.any(Function)
     )
     expect(result.current.mods[0].version).toBe('1.2.0')
   })
@@ -209,15 +201,15 @@ describe('useModScan', () => {
   it('should fallback to hub url when direct download url is missing', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [localModFixture],
+      mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue({
       ...enrichedModFixture,
-      downloadUrl: undefined,
+      downloadUrl: undefined
     })
     mockStreamUpgrade.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [],
+      mods: []
     })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
@@ -240,40 +232,38 @@ describe('useModScan', () => {
       'C:\\Mods\\mod-1',
       'https://hub.coigame.com/Mod/1/Mod-1',
       'https://hub.coigame.com/Mod/1/Mod-1',
-      expect.any(Function),
+      expect.any(Function)
     )
   })
 
   it('should expose upgrade progress while upgrading', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [localModFixture],
+      mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue(enrichedModFixture)
     let capturedEvent: UpgradeEvent | undefined
-    mockStreamUpgrade.mockImplementation(
-      async (
-        _installDir: string,
-        _downloadUrl: string,
-        _hubPageUrl: string | undefined,
-        onEvent?: (event: UpgradeEvent) => void,
-      ): Promise<ScanModsResponse> => {
-        const event: UpgradeEvent = {
-          type: 'progress',
-          progress: {
-            phase: 'downloading',
-            message: '正在下载更新包',
-            percent: 52,
-          },
+    mockStreamUpgrade.mockImplementation(async (
+      _installDir: string,
+      _downloadUrl: string,
+      _hubPageUrl: string | undefined,
+      onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      const event: UpgradeEvent = {
+        type: 'progress',
+        progress: {
+          phase: 'downloading',
+          message: '正在下载更新包',
+          percent: 52
         }
-        capturedEvent = event
-        onEvent?.(event)
-        return {
-          dirPath: 'C:\\Mods',
-          mods: [],
-        }
-      },
-    )
+      }
+      capturedEvent = event
+      onEvent?.(event)
+      return {
+        dirPath: 'C:\\Mods',
+        mods: []
+      }
+    })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
@@ -301,13 +291,13 @@ describe('useModScan', () => {
       dirPath: 'C:\\Mods',
       mods: [
         { ...localModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' },
-        { ...localModFixture, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' },
-      ],
+        { ...localModFixture, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
+      ]
     })
 
     const checkResolveFns: Array<(v: ModRecord) => void> = []
     mockCheckMod.mockImplementation(
-      () => new Promise<ModRecord>((resolve) => checkResolveFns.push(resolve)),
+      () => new Promise<ModRecord>((resolve) => checkResolveFns.push(resolve))
     )
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
@@ -350,88 +340,60 @@ describe('useModScan', () => {
       dirPath: 'C:\\Mods',
       mods: [
         { ...localModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' },
-        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' },
-      ],
+        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
+      ]
     })
     mockCheckMod.mockImplementation(async (installDir: string) => {
       if (installDir === 'C:\\Mods\\mod-a') {
-        return {
-          ...enrichedModFixture,
-          id: 'mod-a',
-          displayName: 'Mod A',
-          installDir: 'C:\\Mods\\mod-a',
-        }
+        return { ...enrichedModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' }
       }
-      return {
-        ...enrichedModFixture2,
-        id: 'mod-b',
-        displayName: 'Mod B',
-        installDir: 'C:\\Mods\\mod-b',
-      }
+      return { ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
     })
     // mod-a fails, mod-b succeeds
-    mockStreamUpgrade.mockImplementation(
-      async (
-        installDir: string,
-        _downloadUrl: string,
-        _hubPageUrl: string | undefined,
-        _onEvent?: (event: UpgradeEvent) => void,
-      ): Promise<ScanModsResponse> => {
-        if (installDir === 'C:\\Mods\\mod-a') {
-          throw new Error('Network timeout for mod-a')
-        }
-        return {
-          dirPath: 'C:\\Mods',
-          mods: [
-            {
-              ...enrichedModFixture2,
-              id: 'mod-b',
-              displayName: 'Mod B',
-              installDir: 'C:\\Mods\\mod-b',
-              version: '2.1.0',
-              status: 'up_to_date',
-            },
-          ],
-        }
-      },
-    )
+    mockStreamUpgrade.mockImplementation(async (
+      installDir: string,
+      _downloadUrl: string,
+      _hubPageUrl: string | undefined,
+      _onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      if (installDir === 'C:\\Mods\\mod-a') {
+        throw new Error('Network timeout for mod-a')
+      }
+      return {
+        dirPath: 'C:\\Mods',
+        mods: [{ ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b', version: '2.1.0', status: 'up_to_date' }]
+      }
+    })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
 
-    await act(async () => {
-      await Promise.resolve()
-    })
-    await act(async () => {
-      await result.current.checkUpdates()
-    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
 
     // Upgrade mod-a (should fail)
     await act(async () => {
-      await result.current.upgrade(result.current.mods.find((m) => m.id === 'mod-a')!)
+      await result.current.upgrade(result.current.mods.find(m => m.id === 'mod-a')!)
     })
 
     // mod-a should have upgradeError set
-    const modA = result.current.mods.find((m) => m.id === 'mod-a')
+    const modA = result.current.mods.find(m => m.id === 'mod-a')
     expect(modA?.upgradeError).toBe('Network timeout for mod-a')
-    expect(result.current.upgradeResults['mod-a']).toEqual({
-      ok: false,
-      error: 'Network timeout for mod-a',
-    })
+    expect(result.current.upgradeResults['mod-a']).toEqual({ ok: false, error: 'Network timeout for mod-a' })
 
     // Upgrade mod-b (should succeed)
     await act(async () => {
-      await result.current.upgrade(result.current.mods.find((m) => m.id === 'mod-b')!)
+      await result.current.upgrade(result.current.mods.find(m => m.id === 'mod-b')!)
     })
 
     // mod-b should NOT have upgradeError
-    const modB = result.current.mods.find((m) => m.id === 'mod-b')
+    const modB = result.current.mods.find(m => m.id === 'mod-b')
     expect(modB?.upgradeError).toBeUndefined()
     expect(modB?.version).toBe('2.1.0')
     expect(result.current.upgradeResults['mod-b']).toEqual({ ok: true })
 
     // mod-a error should still be there (not affected by mod-b success)
-    const modAAfter = result.current.mods.find((m) => m.id === 'mod-a')
+    const modAAfter = result.current.mods.find(m => m.id === 'mod-a')
     expect(modAAfter?.upgradeError).toBe('Network timeout for mod-a')
 
     // Global error should NOT be set (errors are per-mod now)
@@ -443,65 +405,46 @@ describe('useModScan', () => {
       dirPath: 'C:\\Mods',
       mods: [
         { ...localModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' },
-        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' },
-      ],
+        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
+      ]
     })
     mockCheckMod.mockImplementation(async (installDir: string) => {
       if (installDir === 'C:\\Mods\\mod-a') {
-        return {
-          ...enrichedModFixture,
-          id: 'mod-a',
-          displayName: 'Mod A',
-          installDir: 'C:\\Mods\\mod-a',
-        }
+        return { ...enrichedModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' }
       }
-      return {
-        ...enrichedModFixture2,
-        id: 'mod-b',
-        displayName: 'Mod B',
-        installDir: 'C:\\Mods\\mod-b',
-      }
+      return { ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
     })
 
     const upgradePromises: Array<() => void> = []
-    mockStreamUpgrade.mockImplementation(
-      async (
-        _installDir: string,
-        _downloadUrl: string,
-        _hubPageUrl: string | undefined,
-        onEvent?: (event: UpgradeEvent) => void,
-      ): Promise<ScanModsResponse> => {
-        return new Promise<ScanModsResponse>((resolve) => {
-          onEvent?.({
-            type: 'progress',
-            progress: { phase: 'downloading', message: 'downloading', percent: 50 },
-          })
-          upgradePromises.push(() => {
-            resolve({
-              dirPath: 'C:\\Mods',
-              mods: [{ ...enrichedModFixture, version: '1.2.0', status: 'up_to_date' }],
-            })
+    mockStreamUpgrade.mockImplementation(async (
+      _installDir: string,
+      _downloadUrl: string,
+      _hubPageUrl: string | undefined,
+      onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      return new Promise<ScanModsResponse>((resolve) => {
+        onEvent?.({ type: 'progress', progress: { phase: 'downloading', message: 'downloading', percent: 50 } })
+        upgradePromises.push(() => {
+          resolve({
+            dirPath: 'C:\\Mods',
+            mods: [{ ...enrichedModFixture, version: '1.2.0', status: 'up_to_date' }]
           })
         })
-      },
-    )
+      })
+    })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
 
-    await act(async () => {
-      await Promise.resolve()
-    })
-    await act(async () => {
-      await result.current.checkUpdates()
-    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
 
     // Start both upgrades (they run concurrently)
     let p1: Promise<UpgradeResult>
     let p2: Promise<UpgradeResult>
     await act(async () => {
-      p1 = result.current.upgrade(result.current.mods.find((m) => m.id === 'mod-a')!)
-      p2 = result.current.upgrade(result.current.mods.find((m) => m.id === 'mod-b')!)
+      p1 = result.current.upgrade(result.current.mods.find(m => m.id === 'mod-a')!)
+      p2 = result.current.upgrade(result.current.mods.find(m => m.id === 'mod-b')!)
       await Promise.resolve()
     })
 
@@ -510,7 +453,7 @@ describe('useModScan', () => {
 
     // Resolve both
     await act(async () => {
-      upgradePromises.forEach((resolve) => resolve())
+      upgradePromises.forEach(resolve => resolve())
       await Promise.all([p1!, p2!])
     })
 
@@ -524,67 +467,44 @@ describe('useModScan', () => {
       dirPath: 'C:\\Mods',
       mods: [
         { ...localModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' },
-        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' },
-      ],
+        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
+      ]
     })
     mockCheckMod.mockImplementation(async (installDir: string) => {
       if (installDir === 'C:\\Mods\\mod-a') {
-        return {
-          ...enrichedModFixture,
-          id: 'mod-a',
-          displayName: 'Mod A',
-          installDir: 'C:\\Mods\\mod-a',
-        }
+        return { ...enrichedModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' }
       }
-      return {
-        ...enrichedModFixture2,
-        id: 'mod-b',
-        displayName: 'Mod B',
-        installDir: 'C:\\Mods\\mod-b',
-      }
+      return { ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
     })
     // mod-a fails (streamUpgrade rejects), mod-b succeeds
-    mockStreamUpgrade.mockImplementation(
-      async (
-        installDir: string,
-        _downloadUrl: string,
-        _hubPageUrl: string | undefined,
-        _onEvent?: (event: UpgradeEvent) => void,
-      ): Promise<ScanModsResponse> => {
-        if (installDir === 'C:\\Mods\\mod-a') {
-          throw new Error('Network timeout for mod-a')
-        }
-        return {
-          dirPath: 'C:\\Mods',
-          mods: [
-            {
-              ...enrichedModFixture2,
-              id: 'mod-b',
-              displayName: 'Mod B',
-              installDir: 'C:\\Mods\\mod-b',
-              version: '2.1.0',
-              status: 'up_to_date',
-            },
-          ],
-        }
-      },
-    )
+    mockStreamUpgrade.mockImplementation(async (
+      installDir: string,
+      _downloadUrl: string,
+      _hubPageUrl: string | undefined,
+      _onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      if (installDir === 'C:\\Mods\\mod-a') {
+        throw new Error('Network timeout for mod-a')
+      }
+      return {
+        dirPath: 'C:\\Mods',
+        mods: [{ ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b', version: '2.1.0', status: 'up_to_date' }]
+      }
+    })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
 
-    await act(async () => {
-      await Promise.resolve()
-    })
-    await act(async () => {
-      await result.current.checkUpdates()
-    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
 
     const doneResults = new Map<string, boolean>()
     await act(async () => {
-      await result.current.forceUpgradeAll(result.current.mods, undefined, (mod, ok) => {
-        doneResults.set(mod.id, ok)
-      })
+      await result.current.forceUpgradeAll(
+        result.current.mods,
+        undefined,
+        (mod, ok) => { doneResults.set(mod.id, ok) }
+      )
     })
 
     // The failed mod must be reported as failed, not falsely reported as success.
@@ -597,7 +517,7 @@ describe('useModScan', () => {
   it('should report failure through forceUpgradeAll upgrade return value', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [localModFixture],
+      mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue(enrichedModFixture)
     mockStreamUpgrade.mockRejectedValue(new Error('boom'))
@@ -605,12 +525,8 @@ describe('useModScan', () => {
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
 
-    await act(async () => {
-      await Promise.resolve()
-    })
-    await act(async () => {
-      await result.current.checkUpdates()
-    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
 
     let returned: { ok: boolean; error?: string } | undefined
     await act(async () => {
@@ -623,26 +539,22 @@ describe('useModScan', () => {
   it('should set upgradeError when mod has no download link', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',
-      mods: [localModFixture],
+      mods: [localModFixture]
     })
     mockCheckMod.mockResolvedValue({
       ...localModFixture,
       sizeText: '1.2 MB',
       sizeLoading: false,
       status: 'unknown',
-      checkingStatus: 'done',
+      checkingStatus: 'done'
       // No url, no downloadUrl
     })
 
     const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
     const { result } = renderHook(() => useModScan())
 
-    await act(async () => {
-      await Promise.resolve()
-    })
-    await act(async () => {
-      await result.current.checkUpdates()
-    })
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
 
     // Try to upgrade a mod with no download link
     await act(async () => {
@@ -651,10 +563,7 @@ describe('useModScan', () => {
 
     // Should have per-mod error
     expect(result.current.mods[0].upgradeError).toBe('当前 Mod 没有可用的升级下载链接')
-    expect(result.current.upgradeResults['mod-1']).toEqual({
-      ok: false,
-      error: '当前 Mod 没有可用的升级下载链接',
-    })
+    expect(result.current.upgradeResults['mod-1']).toEqual({ ok: false, error: '当前 Mod 没有可用的升级下载链接' })
     // Global error should NOT be set
     expect(result.current.error).toBe(null)
     // streamUpgrade should NOT have been called
