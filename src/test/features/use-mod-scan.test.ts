@@ -456,6 +456,80 @@ describe('useModScan', () => {
     expect(result.current.upgradeProgressMap).toEqual({})
   })
 
+  it('should report per-mod failure through forceUpgradeAll onModDone', async () => {
+    mockLocalScan.mockResolvedValue({
+      dirPath: 'C:\\Mods',
+      mods: [
+        { ...localModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' },
+        { ...localModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
+      ]
+    })
+    mockCheckMod.mockImplementation(async (installDir: string) => {
+      if (installDir === 'C:\\Mods\\mod-a') {
+        return { ...enrichedModFixture, id: 'mod-a', displayName: 'Mod A', installDir: 'C:\\Mods\\mod-a' }
+      }
+      return { ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b' }
+    })
+    // mod-a fails (streamUpgrade rejects), mod-b succeeds
+    mockStreamUpgrade.mockImplementation(async (
+      installDir: string,
+      _downloadUrl: string,
+      _hubPageUrl: string | undefined,
+      _onEvent?: (event: UpgradeEvent) => void
+    ): Promise<ScanModsResponse> => {
+      if (installDir === 'C:\\Mods\\mod-a') {
+        throw new Error('Network timeout for mod-a')
+      }
+      return {
+        dirPath: 'C:\\Mods',
+        mods: [{ ...enrichedModFixture2, id: 'mod-b', displayName: 'Mod B', installDir: 'C:\\Mods\\mod-b', version: '2.1.0', status: 'up_to_date' }]
+      }
+    })
+
+    const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
+    const { result } = renderHook(() => useModScan())
+
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
+
+    const doneResults = new Map<string, boolean>()
+    await act(async () => {
+      await result.current.forceUpgradeAll(
+        result.current.mods,
+        undefined,
+        (mod, ok) => { doneResults.set(mod.id, ok) }
+      )
+    })
+
+    // The failed mod must be reported as failed, not falsely reported as success.
+    expect(doneResults.get('mod-a')).toBe(false)
+    expect(doneResults.get('mod-b')).toBe(true)
+    expect(result.current.upgradeResults['mod-a']?.ok).toBe(false)
+    expect(result.current.upgradeResults['mod-b']?.ok).toBe(true)
+  })
+
+  it('should report failure through forceUpgradeAll upgrade return value', async () => {
+    mockLocalScan.mockResolvedValue({
+      dirPath: 'C:\\Mods',
+      mods: [localModFixture]
+    })
+    mockCheckMod.mockResolvedValue(enrichedModFixture)
+    mockStreamUpgrade.mockRejectedValue(new Error('boom'))
+
+    const { useModScan } = await import('@/features/mod-status/model/use-mod-scan')
+    const { result } = renderHook(() => useModScan())
+
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await result.current.checkUpdates() })
+
+    let returned: { ok: boolean; error?: string } | undefined
+    await act(async () => {
+      returned = await result.current.upgrade(result.current.mods[0])
+    })
+
+    expect(returned).toEqual({ ok: false, error: 'boom' })
+  })
+
   it('should set upgradeError when mod has no download link', async () => {
     mockLocalScan.mockResolvedValue({
       dirPath: 'C:\\Mods',

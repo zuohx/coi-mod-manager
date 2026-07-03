@@ -31,6 +31,16 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # ── Rust ────────────────────────────────────────────
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
       # ── Install JS dependencies ─────────────────────────
       - name: Install dependencies
         run: pnpm install
@@ -43,6 +53,10 @@ jobs:
       - name: TypeScript check
         run: pnpm tsc --noEmit
 
-      # ── Run tests ───────────────────────────────────────
+      # ── Run tests (Node) ────────────────────────────────
       - name: Run tests
         run: pnpm test
+
+      # ── Run tests (Rust) — includes TS/Rust contract tests ─
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
