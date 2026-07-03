@@ -1,0 +1,12 @@
+[
+  { "output": null },
+  { "input": null, "output": null },
+  { "input": "", "output": null },
+  { "input": "   ", "output": null },
+  { "input": "1.0.0", "output": "1.0.0" },
+  { "input": "v1.2.3", "output": "1.2.3" },
+  { "input": "V2.0.0", "output": "2.0.0" },
+  { "input": "vv1.2.3", "output": "v1.2.3" },
+  { "input": " v1.2.3 ", "output": "1.2.3" },
+  { "input": " v ", "output": null }
+]

@@ -242,11 +242,20 @@ fn format_bytes(bytes: u64) -> String {
 
 /// Normalize a remote version string (strip leading 'v').
 fn normalize_remote_version(value: Option<&str>) -> Option<String> {
-    let v = value?.trim();
-    if v.is_empty() {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
         return None;
     }
-    Some(v.trim_start_matches('v').trim_start_matches('V').to_string())
+    let stripped = trimmed
+        .strip_prefix('v')
+        .or_else(|| trimmed.strip_prefix('V'))
+        .unwrap_or(trimmed)
+        .trim();
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(stripped.to_string())
+    }
 }
 
 // ============================================================
@@ -746,5 +755,52 @@ mod tests {
         let already_escaped = r#"{"desc": "line1\nline2"}"#;
         let result2 = fix_literal_newlines_in_json(already_escaped);
         assert!(matches!(result2, std::borrow::Cow::Borrowed(_)));
+    }
+
+    fn contract_fixture_path(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join("contract")
+            .join(name)
+    }
+
+    fn read_contract_fixture(name: &str) -> String {
+        std::fs::read_to_string(contract_fixture_path(name))
+            .unwrap_or_else(|e| panic!("failed to read contract fixture {name}: {e}"))
+    }
+
+    #[derive(serde::Deserialize)]
+    struct VersionCompareCase {
+        left: String,
+        right: String,
+        sign: i32,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct NormalizeRemoteCase {
+        input: Option<String>,
+        output: Option<String>,
+    }
+
+    #[test]
+    fn contract_version_compare_matches_golden() {
+        let cases: Vec<VersionCompareCase> =
+            serde_json::from_str(&read_contract_fixture("version-compare.json")).unwrap();
+
+        for case in cases {
+            assert_eq!(compare_versions(&case.left, &case.right).signum(), case.sign);
+        }
+    }
+
+    #[test]
+    fn contract_normalize_remote_version_matches_golden() {
+        let cases: Vec<NormalizeRemoteCase> =
+            serde_json::from_str(&read_contract_fixture("normalize-remote-version.json")).unwrap();
+
+        for case in cases {
+            let got = normalize_remote_version(case.input.as_deref());
+            assert_eq!(got, case.output);
+        }
     }
 }

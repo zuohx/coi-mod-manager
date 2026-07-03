@@ -208,11 +208,13 @@ export function getManifestUrl(parsed: unknown, keys: string[]): string | undefi
 }
 
 export function normalizeRemoteVersion(value?: string): string | undefined {
-  if (!value) {
+  const trimmed = value?.trim()
+  if (!trimmed) {
     return undefined
   }
 
-  return value.replace(/^v/i, '').trim() || undefined
+  const stripped = trimmed.replace(/^[vV]/, '').trim()
+  return stripped || undefined
 }
 
 export function computeStatus(localVersion: string, remoteVersion?: string): ModStatus {
